@@ -1,0 +1,174 @@
+version: '3.8'
+
+services:
+  # Redis - Message broker
+  redis:
+    image: redis:7-alpine
+    container_name: echoarb-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - echoarb-network
+
+  # TimescaleDB - Time-series database
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: echoarb-timescaledb
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_DB: ${DB_DATABASE:-echoarb}
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - echoarb-network
+
+  # Go Ingestor - WebSocket data ingestion
+  ingestor:
+    build:
+      context: ./ingestor
+      dockerfile: Dockerfile
+    container_name: echoarb-ingestor
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - KALSHI_API_KEY=${KALSHI_API_KEY}
+      - KALSHI_PRIVATE_KEY_PATH=/app/keys/kalshi_private_key.pem
+      - KALSHI_WS_URL=${KALSHI_WS_URL:-wss://api.kalshi.co/trade-api/ws/v2}
+      - POLY_WS_URL=${POLY_WS_URL:-wss://ws-subscriptions-clob.polymarket.com/ws/market}
+      - MANIFOLD_API_URL=${MANIFOLD_API_URL:-https://api.manifold.markets/v0/markets}
+      - METRICS_PORT=9090
+      - CONFIG_PATH=/app/config/market_pairs.json
+    ports:
+      - "9090:9090"  # Prometheus metrics
+    volumes:
+      - ./keys:/app/keys:ro
+      - ./config:/app/config:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - echoarb-network
+
+  # Python Analysis - FastAPI backend
+  analysis:
+    build:
+      context: ./analysis
+      dockerfile: Dockerfile
+    container_name: echoarb-analysis
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - DB_HOST=timescaledb
+      - DB_PORT=5432
+      - DB_DATABASE=${DB_DATABASE:-echoarb}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-changeme}
+      - API_PORT=8000
+      - METRICS_ENABLED=true
+      - METRICS_PORT=9091
+      - MARKET_PAIRS_PATH=/app/config/market_pairs.json
+    ports:
+      - "8000:8000"  # FastAPI
+      - "9091:9091"  # Prometheus metrics
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - echoarb-network
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: echoarb-frontend
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - analysis
+    restart: unless-stopped
+    networks:
+      - echoarb-network
+
+  # Prometheus - Metrics collection (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: echoarb-prometheus
+    ports:
+      - "9092:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - echoarb-network
+    profiles:
+      - monitoring
+
+  # Grafana - Metrics visualization (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: echoarb-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - echoarb-network
+    profiles:
+      - monitoring
+
+volumes:
+  redis_data:
+    driver: local
+  timescaledb_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  echoarb-network:
+    driver: bridge

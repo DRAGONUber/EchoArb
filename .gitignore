@@ -1,0 +1,246 @@
+# EchoArb .gitignore
+
+# ====================================================================
+# SECRETS AND CREDENTIALS - NEVER COMMIT THESE!
+# ====================================================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+keys/
+*.p12
+*.pfx
+
+# API Keys and tokens
+kalshi_api_key.txt
+polymarket_credentials.json
+
+# ====================================================================
+# PYTHON
+# ====================================================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# ====================================================================
+# GO
+# ====================================================================
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+ingestor/ingestor
+ingestor/bin/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# ====================================================================
+# NODE.JS / NEXT.JS
+# ====================================================================
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Testing
+/coverage
+
+# Next.js
+.next/
+out/
+frontend/.next/
+frontend/out/
+
+# Production
+build
+dist
+
+# Misc
+.DS_Store
+*.pem
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
+.env*.local
+
+# Vercel
+.vercel
+
+# Typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# ====================================================================
+# DOCKER
+# ====================================================================
+*.log
+docker-compose.override.yml
+
+# ====================================================================
+# DATABASE
+# ====================================================================
+*.db
+*.sqlite
+*.sqlite3
+postgres_data/
+timescaledb_data/
+
+# ====================================================================
+# REDIS
+# ====================================================================
+dump.rdb
+appendonly.aof
+redis_data/
+
+# ====================================================================
+# IDE / EDITORS
+# ====================================================================
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ====================================================================
+# OS
+# ====================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# ====================================================================
+# LOGS AND TEMPORARY FILES
+# ====================================================================
+*.log
+logs/
+temp/
+tmp/
+*.tmp
+
+# ====================================================================
+# MONITORING AND METRICS
+# ====================================================================
+prometheus_data/
+grafana_data/
+
+# ====================================================================
+# PROJECT SPECIFIC
+# ====================================================================
+# Local configuration overrides
+config/market_pairs.local.json
+
+# Test data
+test_data/
+*.test.json
+
+# Performance profiling
+*.prof
+*.pprof
+
+# Generated documentation
+docs/_build/
+site/

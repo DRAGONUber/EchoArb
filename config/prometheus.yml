@@ -1,0 +1,29 @@
+# Prometheus configuration for EchoArb
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Go Ingestor metrics
+  - job_name: 'ingestor'
+    static_configs:
+      - targets: ['ingestor:9090']
+        labels:
+          service: 'ingestor'
+          environment: 'production'
+
+  # Python Analysis metrics
+  - job_name: 'analysis'
+    static_configs:
+      - targets: ['analysis:9091']
+        labels:
+          service: 'analysis'
+          environment: 'production'
+
+  # Redis metrics (if redis_exporter is added)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          service: 'redis'
+          environment: 'production'
