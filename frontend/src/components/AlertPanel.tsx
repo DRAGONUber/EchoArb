@@ -1,19 +1,11 @@
 // src/components/AlertPanel.tsx
 'use client';
 
-import { getSeverityColor, formatSpread } from '@/lib/api';
+// 1. Add 'Alert' to the import here
+import { getSeverityColor, formatSpread, Alert } from '@/lib/api';
 
-interface Alert {
-  spread_result: {
-    pair_id: string;
-    description: string;
-    max_spread: number;
-    max_spread_pair: string;
-  };
-  threshold: number;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  created_at: string;
-}
+// 2. DELETE the local 'interface Alert' that was here.
+// The component will now use the 'Alert' imported from @/lib/api
 
 interface AlertPanelProps {
   alerts: Alert[];
@@ -53,12 +45,17 @@ export default function AlertPanel({ alerts, onDismiss }: AlertPanelProps) {
   }
 
   // Sort by severity (critical → high → medium → low) and then by timestamp
-  const severityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+  const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+  
   const sortedAlerts = [...alerts].sort((a, b) => {
     const severityDiff =
-      severityOrder[a.severity] - severityOrder[b.severity];
+      (severityOrder[a.severity] ?? 99) - (severityOrder[b.severity] ?? 99);
     if (severityDiff !== 0) return severityDiff;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    
+    // Handle timestamp comparison safely
+    const timeA = new Date(a.created_at).getTime();
+    const timeB = new Date(b.created_at).getTime();
+    return timeB - timeA;
   });
 
   return (
