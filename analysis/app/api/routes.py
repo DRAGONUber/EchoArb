@@ -324,7 +324,7 @@ async def debug_update_price(
         raise HTTPException(status_code=503, detail="Redis not connected")
 
     # Validate inputs
-    if source not in ["KALSHI", "POLYMARKET", "MANIFOLD"]:
+    if source not in ["KALSHI", "POLYMARKET"]:
         raise HTTPException(status_code=400, detail="Invalid source")
 
     if not 0.0 <= price <= 1.0:

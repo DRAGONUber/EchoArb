@@ -363,7 +363,6 @@ docker-compose restart ingestor
 
 - [README.md](README.md): Complete project overview
 - [REAL_DATA_SETUP.md](REAL_DATA_SETUP.md): Detailed setup instructions
-- [MANIFOLD_REMOVED.md](MANIFOLD_REMOVED.md): System architecture changes
 - [API Docs](http://localhost:8000/docs): Interactive API documentation (when running)
 
 Your EchoArb system is now running. Happy trading!

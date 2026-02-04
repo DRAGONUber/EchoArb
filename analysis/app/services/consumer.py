@@ -228,6 +228,8 @@ class RedisStreamConsumer:
             )
             # pending_info is [count, start_id, end_id, consumers]
             if pending_info:
+                if isinstance(pending_info, dict):
+                    return pending_info.get("pending", 0)
                 return pending_info[0]
             return 0
         except Exception as e:

@@ -380,7 +380,6 @@ Common issues:
 ## Documentation
 
 - [REAL_DATA_SETUP.md](REAL_DATA_SETUP.md): Complete setup guide for real market data
-- [MANIFOLD_REMOVED.md](MANIFOLD_REMOVED.md): Documentation of Manifold Markets removal
 - [API Documentation](http://localhost:8000/docs): OpenAPI specification (when services running)
 
 ## License

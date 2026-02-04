@@ -58,7 +58,31 @@ export default function Home() {
           : item
       )
     );
-  }
+  }, []);
+
+  const handleWebSocketMessage = useCallback(
+    (message: any) => {
+      if (message.type === 'tick') {
+        const newTick: Tick = {
+          source: message.source,
+          contract_id: message.contract_id,
+          price: message.price,
+          timestamp: message.timestamp,
+          latency_ms: message.latency_ms,
+        };
+        setTicks((prev) => [newTick, ...prev].slice(0, 100));
+
+        const now = Date.now();
+        tickTimesRef.current = [...tickTimesRef.current, now].filter((ts) => now - ts <= 1000);
+        setTicksPerSecond(tickTimesRef.current.length);
+
+        if (typeof message.latency_ms === 'number') {
+          updateLatency(message.source, message.latency_ms);
+        }
+      }
+    },
+    [updateLatency]
+  );
 
   // Fetch initial ticks
   useEffect(() => {

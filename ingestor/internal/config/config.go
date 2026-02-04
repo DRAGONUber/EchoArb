@@ -53,7 +53,6 @@ type MarketSubscription struct {
 	Description string           `json:"description"`
 	Kalshi      *KalshiMarket    `json:"kalshi,omitempty"`
 	Polymarket  *PolymarketMarket `json:"polymarket,omitempty"`
-	Manifold    *ManifoldMarket   `json:"manifold,omitempty"`
 }
 
 type KalshiMarket struct {
@@ -62,10 +61,6 @@ type KalshiMarket struct {
 
 type PolymarketMarket struct {
 	TokenID string `json:"token_id"`
-}
-
-type ManifoldMarket struct {
-	Slug string `json:"slug"`
 }
 
 // Load reads configuration from file and environment variables
