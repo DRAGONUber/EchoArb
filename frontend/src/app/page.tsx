@@ -1,7 +1,7 @@
 // src/app/page.tsx
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { api, getWebSocketURL, Tick } from '@/lib/api';
 import LatencyDisplay from '@/components/LatencyDisplay';
@@ -16,7 +16,36 @@ export default function Home() {
   ]);
   const tickTimesRef = useRef<number[]>([]);
 
-  const updateLatency = useCallback((source: string, latency: number) => {
+  // WebSocket connection
+  const { connected } = useWebSocket({
+    url: getWebSocketURL('/ws/spreads'),
+    onMessage: handleWebSocketMessage,
+    reconnectInterval: 3000,
+    maxReconnectAttempts: 10,
+  });
+
+  function handleWebSocketMessage(message: any) {
+    if (message.type === 'tick') {
+      const newTick: Tick = {
+        source: message.source,
+        contract_id: message.contract_id,
+        price: message.price,
+        timestamp: message.timestamp,
+        latency_ms: message.latency_ms,
+      };
+      setTicks((prev) => [newTick, ...prev].slice(0, 100));
+
+      const now = Date.now();
+      tickTimesRef.current = [...tickTimesRef.current, now].filter((ts) => now - ts <= 1000);
+      setTicksPerSecond(tickTimesRef.current.length);
+
+      if (typeof message.latency_ms === 'number') {
+        updateLatency(message.source, message.latency_ms);
+      }
+    }
+  }
+
+  function updateLatency(source: string, latency: number) {
     setLatencies((prev) =>
       prev.map((item) =>
         item.source === source
@@ -54,14 +83,6 @@ export default function Home() {
     },
     [updateLatency]
   );
-
-  // WebSocket connection
-  const { connected } = useWebSocket({
-    url: getWebSocketURL('/ws/spreads'),
-    onMessage: handleWebSocketMessage,
-    reconnectInterval: 3000,
-    maxReconnectAttempts: 10,
-  });
 
   // Fetch initial ticks
   useEffect(() => {
