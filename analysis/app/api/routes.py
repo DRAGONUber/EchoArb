@@ -2,6 +2,7 @@
 """
 REST API Routes
 """
+import json
 import logging
 from typing import List
 from datetime import datetime, timezone
@@ -160,26 +161,80 @@ async def get_ticks(
 @router.get("/pairs")
 async def get_market_pairs():
     """
-    Get list of configured market pairs
-
-    Returns configuration for all monitored market pairs
+    Get recent raw ticks from Redis Stream.
     """
     from app.main import get_app_state
 
     state = get_app_state()
 
-    pairs = []
-    for config in state.market_pairs:
-        pairs.append({
-            "id": config.id,
-            "description": config.description,
-            "kalshi_tickers": config.kalshi_tickers,
-            "poly_token_id": config.poly_token_id,
-            "manifold_slug": config.manifold_slug,
-            "alert_threshold": config.alert_threshold
+    if not state.redis_client:
+        raise HTTPException(status_code=503, detail="Redis not connected")
+
+    try:
+        messages = await state.redis_client.xrevrange(
+            settings.redis.stream_name,
+            max="+",
+            min="-",
+            count=limit
+        )
+    except Exception as e:
+        logger.error(f"Error reading ticks from Redis: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch ticks")
+
+    ticks = []
+    for _, message_data in messages:
+        data_bytes = message_data.get(b"data") or message_data.get("data")
+        if not data_bytes:
+            continue
+        if isinstance(data_bytes, str):
+            data_bytes = data_bytes.encode()
+        try:
+            tick_dict = msgpack.unpackb(data_bytes, raw=False)
+            tick = Tick(**tick_dict)
+        except Exception as e:
+            logger.warning(f"Skipping invalid tick data: {e}")
+            continue
+
+        timestamp = tick.source_time.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
+        ticks.append({
+            "source": tick.source,
+            "contract_id": tick.contract_id,
+            "price": tick.price,
+            "timestamp": timestamp,
+            "latency_ms": tick.latency_ingest_ms
         })
 
-    return {"pairs": pairs, "count": len(pairs)}
+    return ticks
+
+
+@router.get("/pairs")
+async def get_market_pairs():
+    """
+    Legacy endpoint for configured market pairs (deprecated).
+
+    Returns subscription configuration from the config file.
+    """
+    return await get_subscriptions()
+
+
+@router.get("/subscriptions")
+async def get_subscriptions():
+    """
+    Get list of configured market subscriptions.
+    """
+    config_path = Path(settings.market_pairs_path)
+    if not config_path.exists():
+        return {"subscriptions": [], "count": 0}
+
+    try:
+        with open(config_path) as f:
+            data = json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to load subscriptions: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to load subscriptions")
+
+    subscriptions = data.get("subscriptions", [])
+    return {"subscriptions": subscriptions, "count": len(subscriptions)}
 
 
 @router.get("/stats/cache")

@@ -134,24 +134,26 @@ Edit `config/market_pairs.json`:
 
 ```json
 {
-  "pairs": [
+  "subscriptions": [
     {
-      "id": "fed-rate-march-2025",
-      "description": "Federal Reserve interest rate decision March 2025 - Rate above 4.75%",
-      "kalshi_tickers": ["FED-25MAR-T4.75", "FED-25MAR-T5.00"],
-      "kalshi_transform": "sum",
-      "poly_token_id": "0x1234567890abcdef1234567890abcdef12345678",
-      "poly_transform": "identity",
-      "alert_threshold": 0.05
+      "id": "tick-stream-config",
+      "description": "Config for raw tick streaming",
+      "kalshi": {
+        "ticker": "FED-25MAR-T4.75"
+      },
+      "polymarket": {
+        "token_id": "0x1234567890abcdef1234567890abcdef12345678"
+      }
     },
     {
       "id": "presidential-election-2024",
       "description": "2024 US Presidential Election - Republican victory",
-      "kalshi_tickers": ["PRES-2024-REP"],
-      "kalshi_transform": "identity",
-      "poly_token_id": "0xabcdef1234567890abcdef1234567890abcdef12",
-      "poly_transform": "identity",
-      "alert_threshold": 0.03
+      "kalshi": {
+        "ticker": "PRES-2024-REP"
+      },
+      "polymarket": {
+        "token_id": "0xabcdef1234567890abcdef1234567890abcdef12"
+      }
     }
   ]
 }

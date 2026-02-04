@@ -118,19 +118,22 @@ Edit `config/market_pairs.json` to specify which markets to subscribe to:
 
 ```json
 {
-  "pairs": [
+  "subscriptions": [
     {
-      "id": "fed-rate-march-2025",
-      "description": "Federal Reserve interest rate decision March 2025",
-      "kalshi_tickers": ["FED-25MAR-T4.75", "FED-25MAR-T5.00"],
-      "kalshi_transform": "sum",
-      "poly_token_id": "0x1234567890abcdef1234567890abcdef12345678",
-      "poly_transform": "identity",
-      "alert_threshold": 0.05
+      "id": "tick-stream-config",
+      "description": "Config for raw tick streaming",
+      "kalshi": {
+        "ticker": "FED-25MAR-T4.75"
+      },
+      "polymarket": {
+        "token_id": "0x1234567890abcdef1234567890abcdef12345678"
+      }
     }
   ]
 }
 ```
+
+Note: The file name remains `market_pairs.json` for compatibility, but the schema uses `subscriptions`.
 
 ### 5. Start Services
 
@@ -198,7 +201,7 @@ echoarb/
 │       ├── hooks/         # Custom hooks (WebSocket, API)
 │       └── lib/           # Utilities and API client
 └── config/                # Configuration files
-    ├── market_pairs.json  # Market configuration
+    ├── market_pairs.json  # Market subscriptions
     └── prometheus.yml     # Prometheus scrape config
 ```
 

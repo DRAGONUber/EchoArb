@@ -40,7 +40,7 @@
 
 ### Infrastructure & Configuration
 
-- ✅ `config/market_pairs.json` - Example market pair configurations
+- ✅ `config/market_pairs.json` - Example market subscription configurations
 - ✅ `.env.example` - Comprehensive environment variable template
 - ✅ `.gitignore` - Complete gitignore for Go, Python, Node.js, and secrets
 - ✅ `scripts/generate_kalshi_keys.sh` - RSA keypair generation script
@@ -62,6 +62,7 @@
 
 3. **REST API Endpoints**
    - `/api/v1/ticks` - Get recent raw ticks
+   - `/api/v1/subscriptions` - Get market subscription config
    - `/api/v1/pairs` - Get market subscription config
    - `/api/v1/stats/cache` - Cache statistics
    - `/api/v1/stats/consumer` - Consumer statistics
