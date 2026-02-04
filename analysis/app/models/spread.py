@@ -48,12 +48,6 @@ class SpreadResult(BaseModel):
         le=1.0,
         description="Normalized Polymarket probability"
     )
-    manifold_prob: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Normalized Manifold probability"
-    )
 
     # Spreads between pairs
     kalshi_poly_spread: float | None = Field(
@@ -61,20 +55,10 @@ class SpreadResult(BaseModel):
         ge=0.0,
         description="Spread between Kalshi and Polymarket"
     )
-    kalshi_manifold_spread: float | None = Field(
-        default=None,
-        ge=0.0,
-        description="Spread between Kalshi and Manifold"
-    )
-    poly_manifold_spread: float | None = Field(
-        default=None,
-        ge=0.0,
-        description="Spread between Polymarket and Manifold"
-    )
 
     # Maximum spread
     max_spread: float = Field(..., ge=0.0, description="Maximum spread across all pairs")
-    max_spread_pair: Literal["KALSHI-POLY", "KALSHI-MANIFOLD", "POLY-MANIFOLD"] = Field(
+    max_spread_pair: Literal["KALSHI-POLY"] = Field(
         ...,
         description="Platform pair with maximum spread"
     )
@@ -113,8 +97,6 @@ class SpreadResult(BaseModel):
             platforms.append("KALSHI")
         if self.poly_prob is not None:
             platforms.append("POLYMARKET")
-        if self.manifold_prob is not None:
-            platforms.append("MANIFOLD")
         return platforms
 
     @property
@@ -129,24 +111,6 @@ class SpreadResult(BaseModel):
                 spread=self.kalshi_poly_spread or 0.0,
                 spread_pct=(self.kalshi_poly_spread or 0.0) * 100
             )
-        elif self.max_spread_pair == "KALSHI-MANIFOLD" and self.kalshi_prob and self.manifold_prob:
-            return SpreadPair(
-                platform_a="KALSHI",
-                platform_b="MANIFOLD",
-                prob_a=self.kalshi_prob,
-                prob_b=self.manifold_prob,
-                spread=self.kalshi_manifold_spread or 0.0,
-                spread_pct=(self.kalshi_manifold_spread or 0.0) * 100
-            )
-        elif self.max_spread_pair == "POLY-MANIFOLD" and self.poly_prob and self.manifold_prob:
-            return SpreadPair(
-                platform_a="POLYMARKET",
-                platform_b="MANIFOLD",
-                prob_a=self.poly_prob,
-                prob_b=self.manifold_prob,
-                spread=self.poly_manifold_spread or 0.0,
-                spread_pct=(self.poly_manifold_spread or 0.0) * 100
-            )
         return None
 
     model_config = {
@@ -157,12 +121,9 @@ class SpreadResult(BaseModel):
                     "description": "Federal Reserve interest rate decision March 2025",
                     "kalshi_prob": 0.55,
                     "poly_prob": 0.58,
-                    "manifold_prob": 0.52,
                     "kalshi_poly_spread": 0.03,
-                    "kalshi_manifold_spread": 0.03,
-                    "poly_manifold_spread": 0.06,
-                    "max_spread": 0.06,
-                    "max_spread_pair": "POLY-MANIFOLD",
+                    "max_spread": 0.03,
+                    "max_spread_pair": "KALSHI-POLY",
                     "timestamp": "2025-01-15T10:30:00Z",
                     "data_completeness": 1.0
                 }
@@ -228,10 +189,9 @@ class SpreadHistory(BaseModel):
     timestamps: list[datetime] = Field(..., description="Timestamps for each data point")
     kalshi_probs: list[float | None] = Field(..., description="Kalshi probabilities over time")
     poly_probs: list[float | None] = Field(..., description="Polymarket probabilities over time")
-    manifold_probs: list[float | None] = Field(..., description="Manifold probabilities over time")
     max_spreads: list[float] = Field(..., description="Maximum spreads over time")
 
-    @field_validator("timestamps", "kalshi_probs", "poly_probs", "manifold_probs", "max_spreads")
+    @field_validator("timestamps", "kalshi_probs", "poly_probs", "max_spreads")
     @classmethod
     def validate_equal_lengths(cls, v, info):
         """Ensure all lists have same length"""

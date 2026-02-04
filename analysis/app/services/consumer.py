@@ -1,7 +1,7 @@
 # app/services/consumer.py
 """
 Redis Stream Consumer
-Reads ticks from Redis Streams and updates the spread calculator
+Reads ticks from Redis Streams for monitoring and acknowledgments
 """
 import asyncio
 import logging
@@ -27,7 +27,7 @@ class RedisStreamConsumer:
     def __init__(
         self,
         redis_client: aioredis.Redis,
-        spread_calculator: SpreadCalculator
+        spread_calculator: SpreadCalculator | None = None
     ):
         self.redis = redis_client
         self.spread_calc = spread_calculator
@@ -169,18 +169,19 @@ class RedisStreamConsumer:
                 return
 
             # Update spread calculator
-            try:
-                self.spread_calc.update_price(
-                    source=tick.source,
-                    contract_id=tick.contract_id,
-                    price=tick.price
-                )
-            except Exception as e:
-                logger.error(f"Failed to update spread calculator: {e}", exc_info=True)
-                # Still acknowledge to avoid infinite retries
-                await self.redis.xack(self.stream_name, self.consumer_group, message_id)
-                self.messages_failed += 1
-                return
+            if self.spread_calc:
+                try:
+                    self.spread_calc.update_price(
+                        source=tick.source,
+                        contract_id=tick.contract_id,
+                        price=tick.price
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to update spread calculator: {e}", exc_info=True)
+                    # Still acknowledge to avoid infinite retries
+                    await self.redis.xack(self.stream_name, self.consumer_group, message_id)
+                    self.messages_failed += 1
+                    return
 
             # Acknowledge successful processing
             await self.redis.xack(self.stream_name, self.consumer_group, message_id)
@@ -227,6 +228,8 @@ class RedisStreamConsumer:
             )
             # pending_info is [count, start_id, end_id, consumers]
             if pending_info:
+                if isinstance(pending_info, dict):
+                    return pending_info.get("pending", 0)
                 return pending_info[0]
             return 0
         except Exception as e:

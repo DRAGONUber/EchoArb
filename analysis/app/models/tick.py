@@ -14,7 +14,7 @@ class Tick(BaseModel):
     Matches Go's internal/models/tick.go structure
     """
 
-    source: Literal["KALSHI", "POLYMARKET", "MANIFOLD"] = Field(
+    source: Literal["KALSHI", "POLYMARKET"] = Field(
         ...,
         description="Data source platform"
     )
@@ -46,6 +46,14 @@ class Tick(BaseModel):
         default=None,
         description="Frontend emit timestamp in milliseconds"
     )
+
+    @field_validator("source", mode="before")
+    @classmethod
+    def normalize_source(cls, v: str) -> str:
+        """Normalize source to uppercase."""
+        if isinstance(v, str):
+            return v.upper()
+        return v
 
     @field_validator("price")
     @classmethod

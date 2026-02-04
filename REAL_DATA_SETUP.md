@@ -2,6 +2,8 @@
 
 This guide provides instructions for connecting EchoArb to real prediction market data from Kalshi and Polymarket.
 
+> **Raw Tick Mode**: The current Phase 0 setup streams raw ticks only. Market pairing, transforms, and spread/alert logic are disabled in the analysis service. Use `/api/v1/ticks` and `/ws/spreads` to view live ticks.
+
 ## Prerequisites
 
 - Docker and Docker Compose installed
@@ -79,9 +81,9 @@ KALSHI_PRIVATE_KEY_PATH=./keys/kalshi_private_key.pem
 
 Replace `<key-id-from-kalshi>` with the Key ID provided by Kalshi.
 
-## Step 2: Configure Market Pairs
+## Step 2: Configure Market Subscriptions
 
-The `config/market_pairs.json` file specifies which markets to track and how to normalize prices for comparison.
+The `config/market_pairs.json` file specifies which markets to subscribe to for raw tick streaming. Transform and alert fields are ignored in raw tick mode.
 
 ### 2.1 Understanding Market Identifiers
 
@@ -108,7 +110,7 @@ Method 1: Browse Kalshi Website
 Method 2: Use Kalshi API
 ```bash
 # Search for Fed-related markets
-curl "https://api.kalshi.com/trade-api/v2/markets?limit=100" | jq '.markets[] | select(.title | contains("Fed"))'
+curl "https://api.elections.kalshi.com/trade-api/v2/markets?limit=100" | jq '.markets[] | select(.title | contains("Fed"))'
 ```
 
 ### 2.3 Finding Polymarket Token IDs
@@ -132,32 +134,37 @@ Edit `config/market_pairs.json`:
 
 ```json
 {
-  "pairs": [
+  "subscriptions": [
     {
-      "id": "fed-rate-march-2025",
-      "description": "Federal Reserve interest rate decision March 2025 - Rate above 4.75%",
-      "kalshi_tickers": ["FED-25MAR-T4.75", "FED-25MAR-T5.00"],
-      "kalshi_transform": "sum",
-      "poly_token_id": "0x1234567890abcdef1234567890abcdef12345678",
-      "poly_transform": "identity",
-      "alert_threshold": 0.05
+      "id": "tick-stream-config",
+      "description": "Config for raw tick streaming",
+      "kalshi": {
+        "ticker": "FED-25MAR-T4.75"
+      },
+      "polymarket": {
+        "token_id": "0x1234567890abcdef1234567890abcdef12345678"
+      }
     },
     {
       "id": "presidential-election-2024",
       "description": "2024 US Presidential Election - Republican victory",
-      "kalshi_tickers": ["PRES-2024-REP"],
-      "kalshi_transform": "identity",
-      "poly_token_id": "0xabcdef1234567890abcdef1234567890abcdef12",
-      "poly_transform": "identity",
-      "alert_threshold": 0.03
+      "kalshi": {
+        "ticker": "PRES-2024-REP"
+      },
+      "polymarket": {
+        "token_id": "0xabcdef1234567890abcdef1234567890abcdef12"
+      }
     }
   ]
 }
 ```
 
-### 2.5 Transform Strategies Explained
+Note: Raw tick mode uses the nested `kalshi` and `polymarket` objects; transform and alert fields are ignored.
+The file name remains `market_pairs.json` for compatibility, but the schema uses `subscriptions`.
 
-The transform layer normalizes different market structures for comparison.
+### 2.5 Transform Strategies Explained (Legacy)
+
+Transform strategies are documented for future phases, but are not applied in raw tick mode.
 
 **identity**: Direct 1:1 mapping
 - Use when markets have identical binary outcomes
@@ -173,7 +180,7 @@ The transform layer normalizes different market structures for comparison.
 - Example: Kalshi asks "Will X happen?", Polymarket asks "Will X NOT happen?"
 - Calculation: 1 - price
 
-### 2.6 When to Use Sum Transform
+### 2.6 When to Use Sum Transform (Legacy)
 
 Kalshi often structures markets as ranges:
 - Contract 1: "Rate between 4.75% and 5.00%"
@@ -202,7 +209,7 @@ This starts:
 - Redis (message broker)
 - TimescaleDB (time-series database)
 - Go ingestor (WebSocket data ingestion)
-- Python analysis (spread calculation)
+- Python analysis (raw tick streaming)
 - Next.js frontend (dashboard)
 
 ### 3.2 View Logs
@@ -231,7 +238,6 @@ Watch for these log messages:
 **Analysis (Python service):**
 ```
 INFO:app.services.consumer:Consumer started successfully
-INFO:app.services.consumer:Processing tick from KALSHI
 ```
 
 ## Step 4: Verify Data Flow
@@ -267,11 +273,11 @@ docker-compose exec redis redis-cli XRANGE market_ticks - + COUNT 5
 curl http://localhost:8000/health
 # Expected: {"status":"healthy"}
 
-# View current spreads
-curl http://localhost:8000/api/v1/spreads | jq .
+# View current ticks
+curl http://localhost:8000/api/v1/ticks | jq .
 
-# View configured market pairs
-curl http://localhost:8000/api/v1/pairs | jq .
+# View configured market subscriptions
+curl http://localhost:8000/api/v1/subscriptions | jq .
 
 # Check consumer statistics
 curl http://localhost:8000/api/v1/stats/consumer | jq .
@@ -283,10 +289,9 @@ Open http://localhost:3000 in your browser.
 
 Expected indicators:
 - WebSocket connection status: "Connected" (green indicator)
-- Market pairs displayed with real-time prices
-- Charts showing price movements
+- Market subscriptions displayed with real-time prices
+- Tick list showing price movements
 - Latency metrics for each platform
-- Alerts when spreads exceed configured thresholds
 
 ## Step 5: Troubleshooting
 
@@ -330,7 +335,7 @@ chmod 600 keys/kalshi_private_key.pem
 **Symptoms:**
 - `XLEN market_ticks` returns 0
 - Dashboard shows no data
-- No "Processing tick" messages in analysis logs
+- No consumer activity in analysis logs
 
 **Solutions:**
 
@@ -342,7 +347,7 @@ docker-compose logs ingestor | grep -i error
 2. Verify market tickers are valid:
 ```bash
 # Test if ticker exists on Kalshi
-curl "https://api.kalshi.com/trade-api/v2/markets/FED-25MAR-T4.75"
+curl "https://api.elections.kalshi.com/trade-api/v2/markets/FED-25MAR-T4.75"
 ```
 
 3. Check if markets are currently active (not expired)
@@ -402,16 +407,16 @@ docker-compose restart analysis
 curl http://localhost:8000/health
 ```
 
-3. Check if spreads are calculated:
+3. Check if ticks are streaming:
 ```bash
-curl http://localhost:8000/api/v1/spreads
-# Should return array of spread objects
+curl http://localhost:8000/api/v1/ticks
+# Should return array of tick objects
 ```
 
-4. Verify market pairs configuration:
+4. Verify market subscriptions configuration:
 ```bash
-curl http://localhost:8000/api/v1/pairs
-# Should return your configured pairs
+curl http://localhost:8000/api/v1/subscriptions
+# Should return your configured subscriptions
 ```
 
 ### Issue: Invalid Market Ticker
@@ -427,7 +432,7 @@ curl http://localhost:8000/api/v1/pairs
 
 2. Check if market is active on Kalshi:
 ```bash
-curl "https://api.kalshi.com/trade-api/v2/markets/YOUR-TICKER"
+curl "https://api.elections.kalshi.com/trade-api/v2/markets/YOUR-TICKER"
 ```
 
 3. Update `config/market_pairs.json` with valid tickers
@@ -445,11 +450,10 @@ docker-compose restart ingestor analysis
 2. **Go Ingestor**: Receives WebSocket messages, normalizes to common Tick format
 3. **Redis Streams**: Ingestor publishes to `market_ticks` stream (msgpack encoding)
 4. **Python Consumer**: Reads from stream, processes in batches
-5. **Transform Layer**: Applies configured transforms (sum, identity, inverse)
-6. **Spread Calculator**: Computes arbitrage opportunities between platforms
-7. **Redis Pub/Sub**: Publishes spread updates to `tick:*` channels
-8. **WebSocket API**: Broadcasts to connected frontend clients
-9. **Frontend**: Updates charts and displays alerts in real-time
+5. **Transform Layer**: Configured transforms are currently not applied (raw tick mode)
+6. **Redis Pub/Sub**: Publishes tick updates to `tick:*` channels
+7. **WebSocket API**: Broadcasts raw ticks to connected frontend clients
+8. **Frontend**: Updates tick list and latency metrics in real-time
 
 ### Latency Tracking
 
@@ -507,14 +511,12 @@ Key metrics:
 
 Once real data is flowing successfully:
 
-1. **Add additional market pairs:**
+1. **Add additional market subscriptions:**
    - Edit `config/market_pairs.json`
    - Restart services: `docker-compose restart`
 
-2. **Adjust alert thresholds:**
-   - Modify `alert_threshold` in market pair configuration
-   - Lower values = more frequent alerts
-   - Typical range: 0.02 (2%) to 0.10 (10%)
+2. **Alert thresholds (legacy):**
+   - `alert_threshold` is ignored in raw tick mode
 
 3. **Monitor performance:**
    - Track latency metrics in Prometheus
@@ -539,7 +541,7 @@ https://trading-api.readme.io/reference/getting-started
 Key concepts:
 - Authentication uses RSA-PSS signing with SHA256
 - Kalshi generates API keys and private keys for users
-- WebSocket endpoint: `wss://api.kalshi.co/trade-api/ws/v2`
+- WebSocket endpoint: `wss://api.elections.kalshi.com/trade-api/ws/v2`
 - Market data includes bid/ask prices (in cents)
 - Orderbook delta updates are pushed in real-time
 
@@ -558,4 +560,4 @@ Key concepts:
 - Polymarket Discord: https://discord.gg/polymarket
 - API Documentation: http://localhost:8000/docs (when services running)
 
-Your EchoArb system is now configured for real-time prediction market arbitrage detection.
+Your EchoArb system is now configured for real-time prediction market tick streaming.
