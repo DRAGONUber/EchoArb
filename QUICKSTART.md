@@ -42,9 +42,9 @@ nano .env
 
 See [REAL_DATA_SETUP.md](REAL_DATA_SETUP.md) for detailed instructions.
 
-### Step 3: Configure Market Pairs
+### Step 3: Configure Market Subscriptions
 
-Edit `config/market_pairs.json` to specify which markets to track:
+Edit `config/market_pairs.json` to specify which markets to subscribe to:
 
 ```bash
 nano config/market_pairs.json
@@ -67,6 +67,8 @@ Example configuration:
   ]
 }
 ```
+
+Note: `kalshi_transform`, `poly_transform`, and `alert_threshold` are ignored in raw tick mode.
 
 ### Step 4: Start Services
 
@@ -111,8 +113,8 @@ docker-compose logs -f ingestor
 curl http://localhost:8000/health
 # Should return: {"status":"healthy"}
 
-# View current spreads
-curl http://localhost:8000/api/v1/spreads | jq .
+# View current ticks
+curl http://localhost:8000/api/v1/ticks | jq .
 ```
 
 ### Check Data Flow
@@ -154,24 +156,12 @@ npm run dev
 For testing the system without Kalshi credentials, use the debug endpoint to inject test data:
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/debug/update_price \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source": "KALSHI",
-    "contract_id": "FED-25MAR-T4.75",
-    "price": 0.35
-  }'
+curl -X POST "http://localhost:8000/api/v1/debug/update_price?source=KALSHI&contract_id=FED-25MAR-T4.75&price=0.35"
 
-curl -X POST http://localhost:8000/api/v1/debug/update_price \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source": "POLYMARKET",
-    "contract_id": "0x1234567890abcdef1234567890abcdef12345678",
-    "price": 0.40
-  }'
+curl -X POST "http://localhost:8000/api/v1/debug/update_price?source=POLYMARKET&contract_id=0x1234567890abcdef1234567890abcdef12345678&price=0.40"
 ```
 
-The dashboard should now show a 5% spread between platforms.
+The dashboard should now show raw ticks for the injected contracts.
 
 ## Troubleshooting
 
@@ -244,7 +234,7 @@ docker-compose logs ingestor | grep -i "connected"
 
 2. Verify market tickers are valid:
 ```bash
-curl "https://api.kalshi.com/trade-api/v2/markets/FED-25MAR-T4.75"
+curl "https://api.elections.kalshi.com/trade-api/v2/markets/FED-25MAR-T4.75"
 ```
 
 3. Check Redis stream has data:
@@ -254,7 +244,7 @@ docker-compose exec redis redis-cli XLEN market_ticks
 
 4. Verify analysis service is processing:
 ```bash
-docker-compose logs analysis | grep -i "processing tick"
+docker-compose logs analysis | grep -i "consumer"
 ```
 
 ## Useful Commands
@@ -308,8 +298,7 @@ docker-compose restart ingestor
                      ▼
          ┌──────────────────────┐
          │  Python Analysis     │ (FastAPI backend)
-         │  - Transform Layer   │
-         │  - Spread Calculator │
+         │  - Tick Streaming    │
          │  - REST API          │
          │  - WebSocket Server  │
          └──────────────────────┘
@@ -333,17 +322,12 @@ docker-compose restart ingestor
 
 **Python Analysis (Port 8000):**
 - Redis Stream consumer with consumer groups
-- Price transformation layer
-- Spread calculation engine
 - REST API with OpenAPI documentation
-- WebSocket server for real-time updates
-- TimescaleDB integration
+- WebSocket server for raw tick updates
 
 **Next.js Frontend (Port 3000):**
 - Real-time dashboard with WebSocket updates
-- Interactive charts using Recharts
-- Latency monitoring
-- Alert notifications
+- Tick list and latency monitoring
 
 **Redis (Port 6379):**
 - Streams for message queue
@@ -353,7 +337,6 @@ docker-compose restart ingestor
 **TimescaleDB (Port 5433):**
 - Time-series optimized PostgreSQL
 - Historical price data
-- Spread history for backtesting
 
 ## What's Working
 
@@ -366,15 +349,14 @@ docker-compose restart ingestor
 - Health checks on all services
 - Auto-reconnection with exponential backoff
 - Comprehensive error handling
-- Transform layer for price normalization
+- Raw tick streaming mode enabled
 
 ## Next Steps
 
 1. **Configure Real Markets**: Edit `config/market_pairs.json` with actual market tickers
 2. **Monitor Performance**: Check Prometheus metrics at http://localhost:9090/metrics
 3. **View Historical Data**: Query TimescaleDB for backtesting
-4. **Set Up Alerts**: Configure alert thresholds in market pairs
-5. **Enable Grafana**: Run with `--profile monitoring` for visualization
+4. **Enable Grafana**: Run with `--profile monitoring` for visualization
 
 ## Documentation
 
