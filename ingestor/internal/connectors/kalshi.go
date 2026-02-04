@@ -21,7 +21,7 @@ import (
 const (
 	kalshiSource = "KALSHI"
 	pingInterval = 30 * time.Second
-	pongTimeout  = 10 * time.Second
+	pongTimeout  = 60 * time.Second  // Must be > pingInterval to handle idle markets
 )
 
 // KalshiConnector handles Kalshi WebSocket connection

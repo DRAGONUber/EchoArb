@@ -11,9 +11,18 @@ from typing import Set
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from redis import asyncio as aioredis
 import msgpack
+from websockets.exceptions import ConnectionClosed
 
 from app.config import settings
 from app.models.tick import Tick
+
+# Import ClientDisconnected from uvicorn to handle specific disconnect errors
+try:
+    from uvicorn.protocols.utils import ClientDisconnected
+except ImportError:
+    # Fallback if uvicorn internal structure changes
+    class ClientDisconnected(Exception):
+        pass
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +164,9 @@ async def websocket_spreads(websocket: WebSocket):
                                 "spreads": [s.model_dump(mode='json') for s in spreads]
                             })
 
+                        except (ConnectionClosed, ClientDisconnected):
+                            # Re-raise disconnects to be handled by the outer block
+                            raise
                         except Exception as e:
                             logger.error(f"Error processing tick: {e}", exc_info=True)
                             # Don't disconnect on processing errors
@@ -173,7 +185,7 @@ async def websocket_spreads(websocket: WebSocket):
                     "timestamp": datetime.now().isoformat()
                 })
 
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, ConnectionClosed, ClientDisconnected):
         logger.info("Client disconnected normally")
     except Exception as e:
         logger.error(f"WebSocket error: {e}", exc_info=True)
@@ -230,6 +242,9 @@ async def websocket_ticks(websocket: WebSocket):
                             "tick": tick.model_dump(mode='json')
                         })
 
+                    except (ConnectionClosed, ClientDisconnected):
+                        # Re-raise disconnects to be handled by the outer block
+                        raise
                     except Exception as e:
                         logger.error(f"Error forwarding tick: {e}", exc_info=True)
 
@@ -238,7 +253,7 @@ async def websocket_ticks(websocket: WebSocket):
         finally:
             await pubsub.unsubscribe()
 
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, ConnectionClosed, ClientDisconnected):
         logger.info("Client disconnected from tick stream")
     except Exception as e:
         logger.error(f"Tick WebSocket error: {e}", exc_info=True)

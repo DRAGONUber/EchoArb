@@ -71,7 +71,7 @@ DATABASE_URL=postgresql+asyncpg://echoarb:echoarb_pass@localhost:5432/echoarb
 # Kalshi (YOU MUST FILL THESE IN)
 KALSHI_API_KEY=your_kalshi_api_key_here
 KALSHI_PRIVATE_KEY_PATH=./keys/kalshi_private_key.pem
-KALSHI_WS_URL=wss://api.kalshi.co/trade-api/ws/v2
+KALSHI_WS_URL=wss://api.elections.kalshi.com/trade-api/ws/v2
 
 # Polymarket
 POLY_WS_URL=wss://ws-subscriptions-clob.polymarket.com/ws/market

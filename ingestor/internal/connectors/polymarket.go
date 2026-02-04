@@ -20,7 +20,7 @@ import (
 const (
 	polySource   = "POLYMARKET"
 	polyPingInterval = 30 * time.Second
-	polyPongTimeout  = 10 * time.Second
+	polyPongTimeout  = 60 * time.Second  // Must be > pingInterval to handle idle markets
 )
 
 // PolymarketConnector handles Polymarket WebSocket connection
