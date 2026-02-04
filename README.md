@@ -171,7 +171,6 @@ open http://localhost:3000
 
 Key API endpoints:
 - `GET /api/v1/ticks` - Recent raw ticks from Redis
-- `GET /api/v1/subscriptions` - Active market subscriptions
 - `GET /ws/spreads` - WebSocket raw tick stream (kept for frontend compatibility)
 
 ## Project Structure
@@ -216,8 +215,8 @@ All services are configured via environment variables in `.env`. See `.env.examp
 
 The `config/market_pairs.json` file defines which markets to subscribe to for raw ticks:
 
-- **kalshi.ticker**: Kalshi market ticker (single contract)
-- **polymarket.token_id**: Polymarket token ID (found in browser DevTools Network tab)
+- **kalshi_tickers**: Array of Kalshi market tickers (use array with "sum" for ranged contracts)
+- **poly_token_id**: Polymarket token ID (found in browser DevTools Network tab)
 
 ### Transform Strategies
 

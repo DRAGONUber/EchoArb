@@ -159,8 +159,7 @@ Edit `config/market_pairs.json`:
 }
 ```
 
-Note: Raw tick mode uses the nested `kalshi` and `polymarket` objects; transform and alert fields are ignored.
-The file name remains `market_pairs.json` for compatibility, but the schema uses `subscriptions`.
+Note: `kalshi_transform`, `poly_transform`, and `alert_threshold` are ignored in raw tick mode.
 
 ### 2.5 Transform Strategies Explained (Legacy)
 
@@ -277,7 +276,7 @@ curl http://localhost:8000/health
 curl http://localhost:8000/api/v1/ticks | jq .
 
 # View configured market subscriptions
-curl http://localhost:8000/api/v1/subscriptions | jq .
+curl http://localhost:8000/api/v1/pairs | jq .
 
 # Check consumer statistics
 curl http://localhost:8000/api/v1/stats/consumer | jq .
@@ -415,7 +414,7 @@ curl http://localhost:8000/api/v1/ticks
 
 4. Verify market subscriptions configuration:
 ```bash
-curl http://localhost:8000/api/v1/subscriptions
+curl http://localhost:8000/api/v1/pairs
 # Should return your configured subscriptions
 ```
 
