@@ -130,7 +130,7 @@ func (k *KalshiConnector) connect(ctx context.Context) error {
 
 // subscribe subscribes to market updates
 func (k *KalshiConnector) subscribe(conn *websocket.Conn) error {
-	for _, pair := range k.config.Pairs {
+	for _, pair := range k.config.Subscriptions {
 		if pair.Kalshi == nil {
 			continue
 		}
