@@ -4,13 +4,14 @@ REST API Routes
 """
 import logging
 from typing import List
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import JSONResponse
+import msgpack
 
 from app.models.spread import SpreadResult, Alert
-from app.models.tick import LatencyStats
+from app.models.tick import Tick
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,57 @@ async def get_alerts(
     except Exception as e:
         logger.error(f"Error getting alerts: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get alerts")
+
+
+@router.get("/ticks")
+async def get_ticks(
+    limit: int = Query(default=100, ge=1, le=1000, description="Number of ticks to return")
+):
+    """
+    Get recent raw ticks from Redis Stream.
+    """
+    from app.main import get_app_state
+
+    state = get_app_state()
+
+    if not state.redis_client:
+        raise HTTPException(status_code=503, detail="Redis not connected")
+
+    try:
+        messages = await state.redis_client.xrevrange(
+            settings.redis.stream_name,
+            max="+",
+            min="-",
+            count=limit
+        )
+    except Exception as e:
+        logger.error(f"Error reading ticks from Redis: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch ticks")
+
+    ticks = []
+    for _, message_data in messages:
+        data_bytes = message_data.get(b"data") or message_data.get("data")
+        if not data_bytes:
+            continue
+        if isinstance(data_bytes, str):
+            data_bytes = data_bytes.encode()
+        try:
+            tick_dict = msgpack.unpackb(data_bytes, raw=False)
+            tick = Tick(**tick_dict)
+        except Exception as e:
+            logger.warning(f"Skipping invalid tick data: {e}")
+            continue
+
+        timestamp = tick.source_time.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
+        ticks.append({
+            "source": tick.source,
+            "contract_id": tick.contract_id,
+            "price": tick.price,
+            "timestamp": timestamp,
+            "latency_ms": tick.latency_ingest_ms
+        })
+
+    return ticks
 
 
 @router.get("/pairs")
@@ -213,8 +265,8 @@ async def debug_update_price(
 
     state = get_app_state()
 
-    if not state.spread_calculator:
-        raise HTTPException(status_code=503, detail="Spread calculator not initialized")
+    if not state.redis_client:
+        raise HTTPException(status_code=503, detail="Redis not connected")
 
     # Validate inputs
     if source not in ["KALSHI", "POLYMARKET", "MANIFOLD"]:
@@ -224,13 +276,28 @@ async def debug_update_price(
         raise HTTPException(status_code=400, detail="Price must be between 0.0 and 1.0")
 
     try:
-        state.spread_calculator.update_price(source, contract_id, price)
+        timestamp_ms = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
+        tick = Tick(
+            source=source,
+            contract_id=contract_id,
+            price=price,
+            ts_source=timestamp_ms,
+            ts_ingest=timestamp_ms
+        )
+        data = msgpack.packb(tick.model_dump(), use_bin_type=True)
+        await state.redis_client.xadd(
+            settings.redis.stream_name,
+            {"data": data},
+            maxlen=10000,
+            approximate=True
+        )
+        await state.redis_client.publish(f"tick:{contract_id}", data)
         return {
             "success": True,
             "source": source,
             "contract_id": contract_id,
             "price": price,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z")
         }
     except Exception as e:
         logger.error(f"Error updating price: {e}", exc_info=True)
