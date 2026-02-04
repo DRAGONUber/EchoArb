@@ -71,19 +71,11 @@ func main() {
 		sugar,
 	)
 
-	manifoldConn := connectors.NewManifoldConnector(
-		cfg,
-		redisClient,
-		metricsRegistry,
-		sugar,
-	)
+	// Start connectors (Kalshi and Polymarket only)
+	sugar.Info("Starting connectors (Kalshi + Polymarket)...")
 
-	// Start all connectors
-	sugar.Info("Starting connectors...")
-	
 	go kalshiConn.Start(ctx)
 	go polyConn.Start(ctx)
-	go manifoldConn.Start(ctx)
 
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)

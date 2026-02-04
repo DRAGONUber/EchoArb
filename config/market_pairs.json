@@ -2,39 +2,13 @@
   "pairs": [
     {
       "id": "fed-rate-march-2025",
-      "description": "Federal Reserve interest rate decision March 2025 - Rate will be above 4.75%",
-      "kalshi_tickers": ["FED-25MAR-T4.75", "FED-25MAR-T5.00"],
-      "kalshi_transform": "sum",
-      "kalshi_threshold": null,
-      "poly_token_id": "0x1234567890abcdef1234567890abcdef12345678",
-      "poly_transform": "identity",
-      "manifold_slug": "will-the-fed-cut-rates-in-march-2025",
-      "manifold_transform": "identity",
-      "alert_threshold": 0.05
-    },
-    {
-      "id": "presidential-election-2024-trump",
-      "description": "2024 US Presidential Election - Trump wins",
-      "kalshi_tickers": ["PRES-2024-TRUMP"],
+      "description": "Superbowl Team to Win",
+      "kalshi_tickers": ["KXNFLPROBOWL-26NFCAFC-AFC"],
       "kalshi_transform": "identity",
       "kalshi_threshold": null,
-      "poly_token_id": "0xabcdef1234567890abcdef1234567890abcdef12",
+      "poly_token_id": "0x204d24f3a0f5dd5fca825292bdeab6a97af3978b2caa2b21bb37e610eddfff5d",
       "poly_transform": "identity",
-      "manifold_slug": "will-donald-trump-win-the-2024-pres",
-      "manifold_transform": "identity",
-      "alert_threshold": 0.03
-    },
-    {
-      "id": "inflation-cpi-february",
-      "description": "February 2025 CPI Inflation - Year-over-year change above 3.0%",
-      "kalshi_tickers": ["CPI-FEB25-T3.00", "CPI-FEB25-T3.50"],
-      "kalshi_transform": "sum",
-      "kalshi_threshold": null,
-      "poly_token_id": "0x7890abcdef1234567890abcdef1234567890abcd",
-      "poly_transform": "identity",
-      "manifold_slug": "will-cpi-inflation-exceed-3-percent",
-      "manifold_transform": "identity",
-      "alert_threshold": 0.04
+      "alert_threshold": 0.05
     }
   ]
 }

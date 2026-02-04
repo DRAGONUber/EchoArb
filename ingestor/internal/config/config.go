@@ -21,7 +21,6 @@ type Config struct {
 	// API endpoints
 	KalshiWSURL    string `json:"kalshi_ws_url"`
 	PolyWSURL      string `json:"poly_ws_url"`
-	ManifoldAPIURL string `json:"manifold_api_url"`
 
 	// Kalshi authentication
 	KalshiAPIKey        string `json:"kalshi_api_key"`
@@ -86,7 +85,6 @@ func Load() (*Config, error) {
 		},
 		KalshiWSURL:    getEnv("KALSHI_WS_URL", "wss://api.kalshi.co/trade-api/ws/v2"),
 		PolyWSURL:      getEnv("POLY_WS_URL", "wss://ws-subscriptions-clob.polymarket.com/ws/market"),
-		ManifoldAPIURL: getEnv("MANIFOLD_API_URL", "https://api.manifold.markets/v0/markets"),
 		
 		// Kalshi auth
 		KalshiAPIKey:        getEnv("KALSHI_API_KEY", ""),

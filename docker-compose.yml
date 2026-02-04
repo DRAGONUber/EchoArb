@@ -54,7 +54,6 @@ services:
       - KALSHI_PRIVATE_KEY_PATH=/app/keys/kalshi_private_key.pem
       - KALSHI_WS_URL=${KALSHI_WS_URL:-wss://api.kalshi.co/trade-api/ws/v2}
       - POLY_WS_URL=${POLY_WS_URL:-wss://ws-subscriptions-clob.polymarket.com/ws/market}
-      - MANIFOLD_API_URL=${MANIFOLD_API_URL:-https://api.manifold.markets/v0/markets}
       - METRICS_PORT=9090
       - CONFIG_PATH=/app/config/market_pairs.json
     ports:

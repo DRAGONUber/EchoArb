@@ -35,7 +35,6 @@ export default function SpreadChart({ data, pairId, description }: SpreadChartPr
     time: new Date(point.timestamp).getTime(),
     kalshi: point.kalshi_prob ? point.kalshi_prob * 100 : null,
     poly: point.poly_prob ? point.poly_prob * 100 : null,
-    manifold: point.manifold_prob ? point.manifold_prob * 100 : null,
     spread: point.max_spread * 100,
   }));
 
@@ -81,18 +80,9 @@ export default function SpreadChart({ data, pairId, description }: SpreadChartPr
           />
           <Line
             type="monotone"
-            dataKey="manifold"
-            stroke="#f59e0b"
-            name="Manifold"
-            dot={false}
-            strokeWidth={2}
-            connectNulls
-          />
-          <Line
-            type="monotone"
             dataKey="spread"
             stroke="#ef4444"
-            name="Max Spread"
+            name="Spread"
             dot={false}
             strokeWidth={2}
             strokeDasharray="5 5"
@@ -100,7 +90,7 @@ export default function SpreadChart({ data, pairId, description }: SpreadChartPr
         </LineChart>
       </ResponsiveContainer>
 
-      <div className="mt-4 grid grid-cols-4 gap-4 text-sm">
+      <div className="mt-4 grid grid-cols-3 gap-4 text-sm">
         <div>
           <div className="text-gray-500">Latest Kalshi</div>
           <div className="font-semibold text-blue-600">
@@ -110,18 +100,10 @@ export default function SpreadChart({ data, pairId, description }: SpreadChartPr
           </div>
         </div>
         <div>
-          <div className="text-gray-500">Latest Poly</div>
+          <div className="text-gray-500">Latest Polymarket</div>
           <div className="font-semibold text-green-600">
             {chartData[chartData.length - 1]?.poly !== null
               ? `${chartData[chartData.length - 1]?.poly?.toFixed(1)}%`
-              : 'N/A'}
-          </div>
-        </div>
-        <div>
-          <div className="text-gray-500">Latest Manifold</div>
-          <div className="font-semibold text-amber-600">
-            {chartData[chartData.length - 1]?.manifold !== null
-              ? `${chartData[chartData.length - 1]?.manifold?.toFixed(1)}%`
               : 'N/A'}
           </div>
         </div>

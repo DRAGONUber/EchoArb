@@ -66,7 +66,7 @@ export default function MarketPairList({ spreads }: MarketPairListProps) {
             </div>
 
             {/* Probabilities Grid */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               {/* Kalshi */}
               <div className="bg-blue-50 rounded p-2">
                 <div className="text-xs text-gray-600 mb-1">Kalshi</div>
@@ -82,14 +82,6 @@ export default function MarketPairList({ spreads }: MarketPairListProps) {
                   {formatProbability(spread.poly_prob)}
                 </div>
               </div>
-
-              {/* Manifold */}
-              <div className="bg-amber-50 rounded p-2">
-                <div className="text-xs text-gray-600 mb-1">Manifold</div>
-                <div className="text-lg font-semibold text-amber-700">
-                  {formatProbability(spread.manifold_prob)}
-                </div>
-              </div>
             </div>
 
             {/* Footer */}
@@ -100,13 +92,11 @@ export default function MarketPairList({ spreads }: MarketPairListProps) {
                     className={`w-2 h-2 rounded-full ${
                       spread.data_completeness === 1.0
                         ? 'bg-green-500'
-                        : spread.data_completeness >= 0.66
-                        ? 'bg-yellow-500'
-                        : 'bg-red-500'
+                        : 'bg-yellow-500'
                     }`}
                   />
                   <span>
-                    {(spread.data_completeness * 100).toFixed(0)}% data
+                    {spread.data_completeness === 1.0 ? 'Both sources' : 'Partial data'}
                   </span>
                 </div>
               </div>

@@ -21,7 +21,6 @@ export default function Home() {
   const [latencies, setLatencies] = useState([
     { source: 'KALSHI', avgLatency: 0, p95Latency: 0, lastUpdate: new Date() },
     { source: 'POLYMARKET', avgLatency: 0, p95Latency: 0, lastUpdate: new Date() },
-    { source: 'MANIFOLD', avgLatency: 0, p95Latency: 0, lastUpdate: new Date() },
   ]);
 
   // WebSocket connection

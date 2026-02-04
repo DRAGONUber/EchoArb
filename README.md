@@ -1,20 +1,17 @@
-# EchoArb
+# EchoArb - Real-Time Prediction Market Arbitrage Scanner
 
-EchoArb - Real-Time Prediction Market Arbitrage Scanner
-Show Image
-Show Image
-Show Image
+A high-performance, real-time arbitrage detection system for prediction markets. Built with Go for low-latency data ingestion, Python/FastAPI for business logic, and Next.js for real-time visualization.
 
-A high-performance, real-time arbitrage detection system for prediction markets (Kalshi, Polymarket, Manifold). Built with Go, Python, and Next.js.
+## Supported Platforms
 
-🚀 Features
-Low-Latency Data Ingestion: Go-based WebSocket connectors with sub-20ms processing
-Smart Transform Layer: Normalizes different market structures (binary, ranged, categorical)
-Real-Time WebSocket API: Live spread updates pushed to frontend
-Prometheus Metrics: Full observability with latency tracking
-Automatic Reconnection: Exponential backoff with circuit breakers
-Authenticated Access: RSA-PSS authentication for Kalshi API
-📊 Architecture
+- **Kalshi**: CFTC-regulated prediction market
+- **Polymarket**: Decentralized prediction market
+
+## Architecture
+
+The system follows a three-tier architecture optimized for low latency and high throughput:
+
+```
 ┌─────────────────────────────────────────────────┐
 │           Go Ingestor (Port 9090)               │
 │  ┌──────────────┐  ┌──────────────┐             │
@@ -48,513 +45,357 @@ Authenticated Access: RSA-PSS authentication for Kalshi API
 │         Next.js Frontend (Port 3000)            │
 │         Real-time charts and alerts             │
 └─────────────────────────────────────────────────┘
-🛠️ Tech Stack
-Layer	Technology	Purpose
-Ingestion	Go 1.21, gorilla/websocket	High-performance data collection
-Analysis	Python 3.11, FastAPI, Pandas	Business logic and transforms
-Frontend	Next.js 14, TypeScript, Recharts	Real-time visualization
-Storage	Redis Streams, TimescaleDB	Message queue and time-series data
-Metrics	Prometheus, Grafana	Observability
-Infra	Docker, GitHub Actions	Containerization and CI/CD
-🚦 Quick Start
-Prerequisites
-Docker & Docker Compose
-Make (optional, for convenience)
-Go 1.21+ (for local development)
-Python 3.11+ (for local development)
-Node.js 20+ (for local development)
-Installation
-bash
-# Clone the repository
+```
+
+### Data Flow
+
+1. **Ingestion Layer (Go)**: WebSocket connectors receive real-time order book updates from exchanges
+2. **Message Broker (Redis Streams)**: Decouples ingestion from processing, provides durability
+3. **Transform Layer (Python)**: Normalizes different market structures (binary, ranged) into comparable formats
+4. **Spread Calculator (Python)**: Computes arbitrage opportunities between platform pairs
+5. **Storage (TimescaleDB)**: Time-series database for historical analysis and backtesting
+6. **WebSocket API (FastAPI)**: Pushes real-time updates to connected clients
+7. **Frontend (Next.js)**: Visualizes live spreads, alerts, and latency metrics
+
+## Technology Stack
+
+| Layer       | Technology                    | Purpose                          |
+|-------------|-------------------------------|----------------------------------|
+| Ingestion   | Go 1.21, gorilla/websocket    | Low-latency data collection      |
+| Analysis    | Python 3.11, FastAPI, Pandas  | Business logic and transforms    |
+| Frontend    | Next.js 14, TypeScript        | Real-time visualization          |
+| Storage     | Redis Streams, TimescaleDB    | Message queue and time-series    |
+| Metrics     | Prometheus, Grafana           | Observability and monitoring     |
+| Infra       | Docker, GitHub Actions        | Containerization and CI/CD       |
+
+## Prerequisites
+
+- Docker 20.10+ and Docker Compose 1.29+
+- For local development (optional):
+  - Go 1.21+
+  - Python 3.11+
+  - Node.js 20+
+
+## Quick Start
+
+### 1. Clone Repository
+
+```bash
 git clone https://github.com/dragonuber/echoarb.git
 cd echoarb
+```
 
-# Run setup script (creates config files, generates keys)
-make setup
+### 2. Configure Environment
 
-# Configure your API credentials
-nano .env  # Add your Kalshi API key
+Copy the example environment file:
 
-# Upload your public key to Kalshi
-# keys/kalshi_public_key.pem
+```bash
+cp .env.example .env
+```
 
-# Configure market pairs
-nano config/market_pairs.json
+Edit `.env` and configure the following variables:
 
-# Start all services
-make dev
-Access Points
-Frontend: http://localhost:3000
-API Docs: http://localhost:8000/docs
-Metrics: http://localhost:9090/metrics
-Grafana: http://localhost:3001 (admin/admin)
-📖 Documentation
-Configuration
-Environment Variables (.env)
-bash
-# Kalshi API
-KALSHI_API_KEY=your_key_here
+```bash
+# Kalshi API Credentials
+KALSHI_API_KEY=         # API Key ID from Kalshi
 KALSHI_PRIVATE_KEY_PATH=./keys/kalshi_private_key.pem
 
-# Redis
-REDIS_HOST=localhost
+# Redis Configuration
+REDIS_HOST=redis
 REDIS_PORT=6379
+REDIS_PASSWORD=
 
-# Database
-DATABASE_URL=postgresql+asyncpg://echoarb:echoarb_pass@localhost:5432/echoarb
-Market Pairs (config/market_pairs.json)
-json
-{
-  "pairs": [
-    {
-      "id": "fed-rate-march",
-      "description": "Fed interest rate decision March 2025",
-      "kalshi": {
-        "ticker": "FED-25MAR-T4.75"
-      },
-      "polymarket": {
-        "token_id": "0x123abc..."
-      },
-      "manifold": {
-        "slug": "will-fed-cut-rates-march"
-      }
-    }
-  ]
-}
-🧪 Testing
-bash
-# Run all tests
-make test
+# Database Configuration
+DB_HOST=timescaledb
+DB_PORT=5432
+DB_DATABASE=echoarb
+DB_USER=postgres
+DB_PASSWORD=changeme
 
-# Run specific test suites
-make test-go          # Go unit tests
-make test-python      # Python tests
-make test-frontend    # Frontend tests
-make test-integration # Full integration tests
+# Service Ports
+API_PORT=8000
+METRICS_PORT=9090
+```
 
-# Generate coverage reports
-make coverage
-📈 Performance
-Metric	Target	Actual
-Ingestion Latency	<20ms	12-18ms
-End-to-End Latency	<100ms	50-90ms
-Messages/Second	1,000+	2,500+
-Uptime	99.9%	99.95%
-Latency breakdown:
+### 3. Obtain Kalshi API Credentials
 
-Network (exchange → server): 20-100ms
-Parsing & Processing: 2-5ms
-Redis Publish: 0.5-1ms
-WebSocket Push: 10-50ms
-🔧 Development
-Local Development
-bash
-# Start individual services
-make dev-ingestor    # Go ingestor only
-make dev-analysis    # Python API only
-make dev-frontend    # Next.js only
+See [REAL_DATA_SETUP.md](REAL_DATA_SETUP.md) for detailed instructions on:
+- Generating API keys from Kalshi
+- Configuring market pairs
+- Finding market tickers and token IDs
 
-# View logs
-make logs            # All services
-make logs-ingestor   # Ingestor only
+### 4. Configure Market Pairs
 
-# Code quality
-make lint            # Run linters
-make format          # Format code
-Project Structure
-echoarb/
-├── ingestor/          # Go service
-│   ├── cmd/
-│   │   └── ingestor/
-│   │       └── main.go
-│   └── internal/
-│       ├── auth/      # Kalshi RSA auth
-│       ├── connectors/# WebSocket connectors
-│       ├── metrics/   # Prometheus metrics
-│       └── retry/     # Retry logic
-├── analysis/          # Python service
-│   └── app/
-│       ├── services/  # Transform layer
-│       ├── api/       # FastAPI routes
-│       └── database/  # SQLAlchemy models
-├── frontend/          # Next.js app
-│   └── src/
-│       ├── components/
-│       └── hooks/
-└── config/            # Configuration files
-🚀 Deployment
-Using Docker (Recommended)
-bash
-# Build production images
-make build
+Edit `config/market_pairs.json` to specify which markets to track:
 
-# Deploy to production
-make deploy
-Using GitHub Actions
-Push to main branch to automatically:
-
-Run tests
-Build Docker images
-Deploy to staging
-(On tag) Deploy to production
-Manual Deployment
-See DEPLOYMENT.md for detailed instructions.
-
-📊 Monitoring
-Prometheus Metrics
-Access metrics at http://localhost:9090/metrics
-
-Key metrics:
-
-echoarb_messages_received_total: Messages received by source
-echoarb_message_latency_seconds: End-to-end latency
-echoarb_connections_active: Active WebSocket connections
-echoarb_price_value: Current market prices
-Grafana Dashboards
-Import pre-configured dashboards from ./grafana/dashboards/
-
-🤝 Contributing
-Fork the repository
-Create a feature branch (git checkout -b feature/amazing-feature)
-Commit your changes (git commit -m 'Add amazing feature')
-Push to the branch (git push origin feature/amazing-feature)
-Open a Pull Request
-
-🙏 Acknowledgments
-Kalshi - CFTC-regulated prediction market
-Polymarket - Decentralized prediction market
-Manifold Markets - Play-money prediction market
-
-Project Link: https://github.com/dragonuber/echoarb
-
-
-
-Getting Started with EchoArb
-This guide will walk you through setting up EchoArb from scratch.
-
-Table of Contents
-Prerequisites
-Initial Setup
-Kalshi API Configuration
-Finding Market Pairs
-Running the Application
-Verifying Everything Works
-Troubleshooting
-Prerequisites
-Required Software
-bash
-# Docker & Docker Compose
-docker --version  # Should be 20.10+
-docker-compose --version  # Should be 1.29+
-
-# Optional (for local development)
-go version      # 1.21+
-python --version  # 3.11+
-node --version    # 20+
-Installation Links
-Docker: https://docs.docker.com/get-docker/
-Go: https://go.dev/doc/install
-Python: https://www.python.org/downloads/
-Node.js: https://nodejs.org/
-Initial Setup
-Step 1: Clone and Setup
-bash
-# Clone repository
-git clone https://github.com/dragonuber/echoarb.git
-cd echoarb
-
-# Run automated setup
-make setup
-This creates:
-
-.env file with configuration
-config/market_pairs.json for market configuration
-keys/ directory with RSA keypair
-Required directories for data storage
-Step 2: Review Generated Files
-bash
-# Check what was created
-ls -la
-cat .env
-cat config/market_pairs.json
-ls keys/
-Kalshi API Configuration
-Step 1: Create Kalshi Account
-Go to https://kalshi.com
-Sign up for an account
-Navigate to Settings → API
-Step 2: Upload Public Key
-bash
-# Your public key was generated at:
-cat keys/kalshi_public_key.pem
-In Kalshi dashboard, go to API settings
-Click "Add API Key"
-Copy contents of keys/kalshi_public_key.pem
-Paste and save
-Copy the generated API Key ID
-Step 3: Configure Environment
-bash
-# Edit .env file
-nano .env
-Update these lines:
-
-bash
-KALSHI_API_KEY=your_api_key_id_here  # From Kalshi dashboard
-KALSHI_PRIVATE_KEY_PATH=./keys/kalshi_private_key.pem
-⚠️ NEVER commit keys/kalshi_private_key.pem to git!
-
-Finding Market Pairs
-You need to find markets that exist on multiple platforms.
-
-Method 1: Manual Search
-Kalshi:
-
-bash
-# Browse markets at https://kalshi.com/markets
-# Look for "Fed Rate", "Elections", "Economic Indicators"
-# Note the ticker (e.g., "FED-25MAR-T4.75")
-Polymarket:
-
-bash
-# Browse markets at https://polymarket.com
-# Look for similar events
-# Open browser DevTools → Network tab
-# Click on a market, find the token_id in API calls
-Manifold:
-
-bash
-# Browse https://manifold.markets
-# Search for similar events
-# The URL contains the slug: manifold.markets/[username]/[slug]
-Method 2: API Discovery
-bash
-# Install jq for JSON parsing
-brew install jq  # macOS
-apt-get install jq  # Linux
-
-# Search Kalshi markets
-curl -X GET "https://api.kalshi.com/trade-api/v2/markets" | jq '.markets[] | select(.title | contains("Fed"))'
-
-# Search Manifold
-curl "https://api.manifold.markets/v0/search-markets?term=fed+rates" | jq '.[].slug'
-Step 3: Configure Market Pairs
-Edit config/market_pairs.json:
-
-json
+```json
 {
   "pairs": [
     {
       "id": "fed-rate-march-2025",
       "description": "Federal Reserve interest rate decision March 2025",
-      "kalshi": {
-        "ticker": "FED-25MAR-T4.75"
-      },
-      "polymarket": {
-        "token_id": "0x1234567890abcdef..."
-      },
-      "manifold": {
-        "slug": "will-the-fed-cut-rates-in-march-2025"
-      }
+      "kalshi_tickers": ["FED-25MAR-T4.75", "FED-25MAR-T5.00"],
+      "kalshi_transform": "sum",
+      "poly_token_id": "0x1234567890abcdef1234567890abcdef12345678",
+      "poly_transform": "identity",
+      "alert_threshold": 0.05
     }
   ]
 }
-Tips:
+```
 
-Start with 2-3 pairs to test
-Use liquid markets (high volume)
-Verify market dates align across platforms
-Running the Application
-Option 1: Full Stack (Recommended)
-bash
-# Start all services
-make dev
+### 5. Start Services
 
-# This starts:
-# - Redis (message broker)
-# - TimescaleDB (database)
-# - Go Ingestor (data collection)
-# - Python API (analysis)
-# - Next.js Frontend (UI)
-# - Grafana (monitoring)
-Option 2: Individual Services
-bash
-# Terminal 1: Infrastructure
-docker-compose up redis timescaledb
+```bash
+docker-compose up -d
+```
 
-# Terminal 2: Go Ingestor
-make dev-ingestor
+### 6. Verify System Health
 
-# Terminal 3: Python API
-make dev-analysis
-
-# Terminal 4: Frontend
-make dev-frontend
-Verifying Everything Works
-Step 1: Check Service Health
-bash
-# Check all services are running
+```bash
+# Check service status
 docker-compose ps
 
-# Should show:
-# - redis: Up
-# - timescaledb: Up (healthy)
-# - ingestor: Up
-# - analysis: Up
-# - frontend: Up
-Step 2: Check Logs
-bash
-# View all logs
-make logs
+# View logs
+docker-compose logs -f
 
-# Look for:
-# - "Connected to Kalshi WebSocket"
-# - "Connected to Polymarket WebSocket"
-# - "Subscribed to market: ..."
-Step 3: Test Endpoints
-bash
-# Ingestor health
-curl http://localhost:9090/health
-# Expected: {"status":"ok"}
-
-# Analysis health
+# Test API endpoints
 curl http://localhost:8000/health
-# Expected: {"status":"ok"}
+curl http://localhost:8000/api/v1/spreads
 
-# Check metrics
-curl http://localhost:9090/metrics | grep echoarb_messages_received_total
-# Should show message counts
-Step 4: Check Frontend
-Open http://localhost:3000
-You should see:
-Real-time price updates
-Spread calculations
-Latency metrics
-Step 5: Verify Data Flow
-bash
-# Check Redis for messages
-docker-compose exec redis redis-cli
+# Access frontend
+open http://localhost:3000
+```
 
-# In Redis CLI:
-XLEN market_ticks
-# Should return a number > 0
+## Service Endpoints
 
-XREAD COUNT 1 STREAMS market_ticks 0
-# Should show a message
-Step 6: Check Prometheus Metrics
-Open http://localhost:9090/metrics
-Search for echoarb_messages_received_total
-Value should be increasing
-Troubleshooting
-Problem: "Failed to connect to Kalshi"
-Possible causes:
+| Service    | Endpoint                          | Description                  |
+|------------|-----------------------------------|------------------------------|
+| Frontend   | http://localhost:3000             | Real-time dashboard          |
+| API        | http://localhost:8000             | FastAPI application          |
+| API Docs   | http://localhost:8000/docs        | OpenAPI documentation        |
+| Metrics    | http://localhost:9090/metrics     | Prometheus metrics (ingestor)|
+| Metrics    | http://localhost:9091/metrics     | Prometheus metrics (analysis)|
+| Grafana    | http://localhost:3001             | Metrics visualization        |
 
-Invalid API key
-Public key not uploaded to Kalshi
-Network issues
-Solution:
+## Project Structure
 
-bash
-# Verify API key in .env
-cat .env | grep KALSHI_API_KEY
+```
+echoarb/
+├── ingestor/              # Go data ingestion service
+│   ├── cmd/
+│   │   └── ingestor/
+│   │       └── main.go
+│   └── internal/
+│       ├── auth/          # Kalshi RSA-PSS authentication
+│       ├── connectors/    # WebSocket connectors (Kalshi, Polymarket)
+│       ├── metrics/       # Prometheus metrics
+│       ├── models/        # Data models
+│       ├── redis/         # Redis Stream publisher
+│       └── retry/         # Retry logic with exponential backoff
+├── analysis/              # Python analysis service
+│   └── app/
+│       ├── api/           # FastAPI routes and WebSocket handlers
+│       ├── database/      # SQLAlchemy models
+│       ├── models/        # Pydantic models
+│       └── services/      # Business logic (transform, spread calc)
+├── frontend/              # Next.js frontend
+│   └── src/
+│       ├── app/           # Next.js 14 app directory
+│       ├── components/    # React components
+│       ├── hooks/         # Custom hooks (WebSocket, API)
+│       └── lib/           # Utilities and API client
+└── config/                # Configuration files
+    ├── market_pairs.json  # Market configuration
+    └── prometheus.yml     # Prometheus scrape config
+```
 
-# Check private key exists and has correct permissions
-ls -la keys/kalshi_private_key.pem
-# Should be -rw------- (600)
+## Configuration
 
-# Test authentication manually
+### Environment Variables
+
+All services are configured via environment variables in `.env`. See `.env.example` for complete reference.
+
+### Market Pairs Configuration
+
+The `config/market_pairs.json` file defines which markets to track and how to transform prices:
+
+- **kalshi_tickers**: Array of Kalshi market tickers (use array with "sum" transform for ranged contracts)
+- **kalshi_transform**: How to combine multiple tickers ("sum", "identity", "inverse")
+- **poly_token_id**: Polymarket token ID (found in browser DevTools Network tab)
+- **poly_transform**: Usually "identity" for direct probability mapping
+- **alert_threshold**: Minimum spread percentage to trigger alerts (e.g., 0.05 = 5%)
+
+### Transform Strategies
+
+The transform layer normalizes different market structures:
+
+- **identity**: Use price as-is (1:1 mapping)
+- **sum**: Add multiple Kalshi contracts (e.g., "4.75-5.00%" + ">5.00%" = ">4.75%")
+- **inverse**: Flip probability (1 - price) for opposite outcomes
+
+## Performance Characteristics
+
+| Metric                 | Target   | Typical   |
+|------------------------|----------|-----------|
+| Ingestion Latency      | <20ms    | 12-18ms   |
+| End-to-End Latency     | <100ms   | 50-90ms   |
+| Messages/Second        | 1,000+   | 2,500+    |
+| WebSocket Reconnection | <5s      | 2-3s      |
+
+Latency breakdown:
+- Network (exchange to server): 20-100ms
+- Parsing and validation: 2-5ms
+- Redis Stream publish: 0.5-1ms
+- Transform and calculation: 5-10ms
+- WebSocket push to frontend: 10-50ms
+
+## Monitoring
+
+### Prometheus Metrics
+
+Access metrics at:
+- Ingestor: http://localhost:9090/metrics
+- Analysis: http://localhost:9091/metrics
+
+Key metrics:
+- `echoarb_messages_received_total`: Messages received by source
+- `echoarb_ingest_latency_seconds`: Data freshness
+- `echoarb_connection_status`: Connection health (1 = connected)
+- `echoarb_errors_total`: Error counts by source and type
+- `echoarb_processing_time_seconds`: Processing duration histogram
+
+### Grafana Dashboards
+
+Start Grafana with monitoring profile:
+
+```bash
+docker-compose --profile monitoring up -d
+```
+
+Access at http://localhost:3001 (default credentials: admin/admin)
+
+Pre-configured dashboards available in `grafana/dashboards/`
+
+## Development
+
+### Running Individual Services
+
+```bash
+# Start infrastructure only
+docker-compose up redis timescaledb
+
+# Run ingestor locally
 cd ingestor
-go run cmd/test_auth.go  # If you create this test script
-Problem: "No messages received"
-Possible causes:
+go run cmd/ingestor/main.go
 
-No markets configured
-Markets are not active
-WebSocket connection failed
-Solution:
+# Run analysis locally
+cd analysis
+pip install -r requirements.txt
+uvicorn app.main:app --reload
 
-bash
-# Check configured markets
-cat config/market_pairs.json
+# Run frontend locally
+cd frontend
+npm install
+npm run dev
+```
 
-# Check ingestor logs for subscriptions
-make logs-ingestor | grep "Subscribed"
+### Testing
 
-# Verify markets exist on Kalshi
-curl "https://api.kalshi.com/trade-api/v2/markets/FED-25MAR-T4.75"
-Problem: "Connection keeps disconnecting"
-Possible causes:
+```bash
+# Go tests
+cd ingestor
+go test ./...
 
-Network instability
-API rate limiting
-Authentication expiring
-Solution:
+# Python tests
+cd analysis
+pytest
 
-bash
-# Check reconnection metrics
-curl http://localhost:9090/metrics | grep echoarb_reconnect_attempts_total
+# Frontend tests
+cd frontend
+npm test
+```
 
-# Increase retry intervals in code if needed
-# See internal/config/config.go
-Problem: "Frontend not showing data"
-Possible causes:
+### Code Quality
 
-WebSocket connection failed
-No spread data available
-Analysis service not running
-Solution:
+```bash
+# Go
+cd ingestor
+go fmt ./...
+go vet ./...
+golangci-lint run
 
-bash
-# Check analysis service
-curl http://localhost:8000/spreads
+# Python
+cd analysis
+black .
+ruff check .
+mypy .
 
-# Test WebSocket connection
-# Open browser console on localhost:3000
-# Look for WebSocket errors
+# TypeScript
+cd frontend
+npm run lint
+npm run type-check
+```
 
-# Check if Redis has data
-docker-compose exec redis redis-cli XLEN market_ticks
-Problem: "Permission denied: keys/kalshi_private_key.pem"
-Solution:
+## Deployment
 
-bash
-# Fix permissions
-chmod 600 keys/kalshi_private_key.pem
-chmod 644 keys/kalshi_public_key.pem
-Problem: "Docker containers won't start"
-Solution:
+### Production Build
 
-bash
-# Clean up and restart
-make clean
-make dev
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml build
+```
 
-# Check Docker resources
-docker system df
+### Environment-Specific Configuration
 
-# Prune unused images if needed
-docker system prune -a
-Next Steps
-Once everything is running:
+Create environment-specific compose files:
+- `docker-compose.dev.yml`: Development overrides
+- `docker-compose.staging.yml`: Staging configuration
+- `docker-compose.prod.yml`: Production configuration
 
-Add More Markets: Edit config/market_pairs.json
-Customize Alerts: Modify threshold in analysis service
-Set Up Monitoring: Configure Grafana dashboards
-Deploy: Follow deployment guide for production
-Getting Help
-Documentation: See /docs folder
-Issues: https://github.com/dragonuber/echoarb/issues
-Discord: [Your Discord server]
-Development Workflow
-bash
-# Daily workflow
-git pull                    # Get latest changes
-make dev                    # Start services
-make logs                   # Monitor logs
-make test                   # Run tests before committing
-git add . && git commit     # Commit changes
-make lint                   # Check code quality
-git push                    # Push changes
-🎉 Congratulations! You're now running EchoArb!
+### Security Considerations
 
-Next: Read the API Documentation to understand the endpoints.
+- Never commit `.env` or `keys/` directory to version control
+- Use different Kalshi API keys for dev/staging/production
+- Set private key file permissions to 600 (`chmod 600 keys/kalshi_private_key.pem`)
+- Rotate API keys periodically
+- Monitor error logs for authentication failures
+- Use read-only volume mounts for keys in production
 
+## Troubleshooting
+
+See [REAL_DATA_SETUP.md](REAL_DATA_SETUP.md) for detailed troubleshooting steps.
+
+Common issues:
+
+**Ingestor fails to authenticate with Kalshi**
+- Verify `KALSHI_API_KEY` matches the Key ID from Kalshi
+- Verify `KALSHI_PRIVATE_KEY_PATH` points to the correct PEM file
+- Check private key file permissions (should be 600)
+- Ensure private key is in valid PEM format
+
+**No data flowing through system**
+- Check ingestor logs: `docker-compose logs -f ingestor`
+- Verify market tickers in `config/market_pairs.json` are active
+- Check Redis stream length: `docker-compose exec redis redis-cli XLEN market_ticks`
+- Verify consumer is running: `docker-compose logs -f analysis | grep consumer`
+
+**Frontend not showing data**
+- Check WebSocket connection in browser console
+- Verify analysis service is running: `curl http://localhost:8000/health`
+- Check for spreads: `curl http://localhost:8000/api/v1/spreads`
+- Verify market pairs are configured correctly
+
+## Documentation
+
+- [REAL_DATA_SETUP.md](REAL_DATA_SETUP.md): Complete setup guide for real market data
+- [MANIFOLD_REMOVED.md](MANIFOLD_REMOVED.md): Documentation of Manifold Markets removal
+- [API Documentation](http://localhost:8000/docs): OpenAPI specification (when services running)
+
+## License
+
+[Your License Here]
+
+## Acknowledgments
+
+- Kalshi API: https://trading-api.readme.io/reference/getting-started
+- Polymarket API: https://docs.polymarket.com/

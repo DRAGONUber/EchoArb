@@ -73,8 +73,7 @@ class SpreadCalculator:
         self.transformer = PriceTransformer()
         self.price_cache: Dict[str, Dict[str, float]] = {
             "KALSHI": {},
-            "POLYMARKET": {},
-            "MANIFOLD": {}
+            "POLYMARKET": {}
         }
         self.last_update: Dict[str, datetime] = {}
     
@@ -99,60 +98,39 @@ class SpreadCalculator:
         
         Returns None if insufficient data available
         """
-        # Get normalized probabilities from each source
+        # Get normalized probabilities from each source (Kalshi + Polymarket only)
         kalshi_prob = self._get_kalshi_probability(pair_config)
         poly_prob = self._get_poly_probability(pair_config)
-        manifold_prob = self._get_manifold_probability(pair_config)
-        
-        # Calculate data completeness
+
+        # Calculate data completeness (only 2 sources now)
         available_sources = sum([
             kalshi_prob is not None,
             poly_prob is not None,
-            manifold_prob is not None
         ])
-        
+
         if available_sources < 2:
-            return None  # Need at least 2 sources to calculate spread
-        
-        data_completeness = available_sources / 3.0
-        
-        # Calculate spreads between pairs
+            return None  # Need both sources to calculate spread
+
+        data_completeness = available_sources / 2.0
+
+        # Calculate spread between Kalshi and Polymarket
         kalshi_poly_spread = None
         if kalshi_prob is not None and poly_prob is not None:
             kalshi_poly_spread = abs(kalshi_prob - poly_prob)
-        
-        kalshi_manifold_spread = None
-        if kalshi_prob is not None and manifold_prob is not None:
-            kalshi_manifold_spread = abs(kalshi_prob - manifold_prob)
-        
-        poly_manifold_spread = None
-        if poly_prob is not None and manifold_prob is not None:
-            poly_manifold_spread = abs(poly_prob - manifold_prob)
-        
-        # Find maximum spread
-        spreads = {
-            "KALSHI-POLY": kalshi_poly_spread,
-            "KALSHI-MANIFOLD": kalshi_manifold_spread,
-            "POLY-MANIFOLD": poly_manifold_spread
-        }
-        
-        valid_spreads = {k: v for k, v in spreads.items() if v is not None}
-        
-        if not valid_spreads:
-            return None
-        
-        max_spread_pair = max(valid_spreads, key=valid_spreads.get)
-        max_spread = valid_spreads[max_spread_pair]
-        
+
+        # Only one spread pair now
+        max_spread = kalshi_poly_spread if kalshi_poly_spread is not None else 0.0
+        max_spread_pair = "KALSHI-POLY"
+
         return SpreadResult(
             pair_id=pair_config.id,
             description=pair_config.description,
             kalshi_prob=kalshi_prob,
             poly_prob=poly_prob,
-            manifold_prob=manifold_prob,
+            manifold_prob=None,  # Not used anymore
             kalshi_poly_spread=kalshi_poly_spread,
-            kalshi_manifold_spread=kalshi_manifold_spread,
-            poly_manifold_spread=poly_manifold_spread,
+            kalshi_manifold_spread=None,  # Not used anymore
+            poly_manifold_spread=None,  # Not used anymore
             max_spread=max_spread,
             max_spread_pair=max_spread_pair,
             timestamp=datetime.now(),
@@ -264,7 +242,6 @@ class SpreadCalculator:
         return {
             "kalshi_contracts": len(self.price_cache["KALSHI"]),
             "polymarket_contracts": len(self.price_cache["POLYMARKET"]),
-            "manifold_contracts": len(self.price_cache["MANIFOLD"]),
             "total_contracts": sum(len(cache) for cache in self.price_cache.values()),
             "last_updates": len(self.last_update)
         }
