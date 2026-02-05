@@ -14,6 +14,7 @@ import (
 	"github.com/dragonuber/echoarb/ingestor/internal/config"
 	"github.com/dragonuber/echoarb/ingestor/internal/connectors"
 	"github.com/dragonuber/echoarb/ingestor/internal/metrics"
+	"github.com/dragonuber/echoarb/ingestor/internal/models"
 	"github.com/dragonuber/echoarb/ingestor/internal/redis"
 	
 	"go.uber.org/zap"
@@ -28,7 +29,7 @@ func main() {
 	defer logger.Sync()
 
 	sugar := logger.Sugar()
-	sugar.Info("Starting EchoArb Ingestor")
+	sugar.Info("Starting EchoArb Ingestor (Firehose Mode)")
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -49,33 +50,33 @@ func main() {
 	}
 	defer redisClient.Close()
 
-	// Create main context with cancellation
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Create tick channel (Buffer 1000 to handle bursts)
+	msgChan := make(chan models.Tick, 1000)
 
 	// Initialize connectors
-	kalshiConn, err := connectors.NewKalshiConnector(
-		cfg,
-		redisClient,
-		metricsRegistry,
-		sugar,
-	)
-	if err != nil {
-		sugar.Fatalf("Failed to create Kalshi connector: %v", err)
-	}
+	// Note: We pass sugar (Logger) and msgChan. No Redis client needed here.
+	kalshiConn := connectors.NewKalshiConnector(cfg, sugar, msgChan)
+	polyConn := connectors.NewPolymarketConnector(cfg, sugar, msgChan)
 
-	polyConn := connectors.NewPolymarketConnector(
-		cfg,
-		redisClient,
-		metricsRegistry,
-		sugar,
-	)
+	// Start connectors
+	sugar.Info("Starting connectors...")
 
-	// Start connectors (Kalshi and Polymarket only)
-	sugar.Info("Starting connectors (Kalshi + Polymarket)...")
+	// Kalshi
+	go func() {
+		if err := kalshiConn.Start(); err != nil {
+			sugar.Errorf("Kalshi connector failed: %v", err)
+		}
+	}()
 
-	go kalshiConn.Start(ctx)
-	go polyConn.Start(ctx)
+	// Polymarket
+	go func() {
+		if err := polyConn.Start(); err != nil {
+			sugar.Errorf("Polymarket connector failed: %v", err)
+		}
+	}()
+
+	// Start the Tick Processor (Reads channel -> Writes to Redis)
+	go processTicks(msgChan, redisClient, metricsRegistry, sugar)
 
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
@@ -84,25 +85,33 @@ func main() {
 	<-sigChan
 	sugar.Info("Received shutdown signal")
 
-	// Graceful shutdown with timeout
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Graceful shutdown
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 
 	sugar.Info("Shutting down gracefully...")
-	cancel() // Cancel main context to stop all connectors
-	
-	// Wait for shutdown or timeout
 	<-shutdownCtx.Done()
 	sugar.Info("Shutdown complete")
 }
 
+// processTicks reads ticks from the channel and publishes them to Redis
+func processTicks(ch <-chan models.Tick, rdb *redis.Client, m *metrics.Registry, logger *zap.SugaredLogger) {
+	for tick := range ch {
+		// Record metrics
+		m.RecordMessage(tick.Source, tick.TimestampSource, true)
+		m.RecordPrice(tick.Source, tick.ContractID, tick.Price)
+
+		// Publish to Redis (Stream + PubSub)
+		if err := rdb.PublishTick(&tick); err != nil {
+			logger.Errorf("Failed to publish tick from %s: %v", tick.Source, err)
+			m.RecordError(tick.Source, "redis_publish_error")
+		}
+	}
+}
+
 func startMetricsServer(port int, logger *zap.SugaredLogger) {
 	mux := http.NewServeMux()
-	
-	// Prometheus metrics endpoint
 	mux.Handle("/metrics", promhttp.Handler())
-	
-	// Health check endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok"}`))
@@ -110,7 +119,6 @@ func startMetricsServer(port int, logger *zap.SugaredLogger) {
 
 	addr := fmt.Sprintf(":%d", port)
 	logger.Infof("Starting metrics server on %s", addr)
-	
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		logger.Fatalf("Metrics server failed: %v", err)
 	}

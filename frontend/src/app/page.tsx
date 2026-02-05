@@ -16,6 +16,7 @@ export default function Home() {
   ]);
   const tickTimesRef = useRef<number[]>([]);
 
+  // 1. Define updateLatency (Stable Reference)
   const updateLatency = useCallback((source: string, latency: number) => {
     setLatencies((prev) =>
       prev.map((item) =>
@@ -31,6 +32,7 @@ export default function Home() {
     );
   }, []);
 
+  // 2. Define WebSocket Handler (Stable Reference)
   const handleWebSocketMessage = useCallback(
     (message: any) => {
       if (message.type === 'tick') {
@@ -55,7 +57,7 @@ export default function Home() {
     [updateLatency]
   );
 
-  // WebSocket connection
+  // 3. Initialize WebSocket (ONLY ONCE)
   const { connected } = useWebSocket({
     url: getWebSocketURL('/ws/spreads'),
     onMessage: handleWebSocketMessage,
@@ -63,7 +65,7 @@ export default function Home() {
     maxReconnectAttempts: 10,
   });
 
-  // Fetch initial ticks
+  // 4. Fetch Initial Ticks
   useEffect(() => {
     async function fetchInitialData() {
       try {
@@ -73,17 +75,11 @@ export default function Home() {
         console.error('Failed to fetch initial data:', error);
       }
     }
-  }, [updateLatency]);
 
-  // 3. Initialize WebSocket with the stable handler
-  const { connected } = useWebSocket({
-    url: getWebSocketURL('/ws/spreads'),
-    onMessage: handleWebSocketMessage,
-    reconnectInterval: 3000,
-    maxReconnectAttempts: 10,
-  });
+    fetchInitialData(); // <--- This was missing in your code
+  }, []); 
 
-  // Tick rate updater
+  // 5. Update Ticks Per Second Counter
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
