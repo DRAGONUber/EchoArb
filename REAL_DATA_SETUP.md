@@ -548,7 +548,7 @@ Key concepts:
 https://docs.polymarket.com/
 
 Key concepts:
-- WebSocket endpoint: `wss://ws-subscriptions-clob.polymarket.com/ws/market`
+- WebSocket endpoint: `wss://ws-subscriptions-clob.polymarket.com/ws`
 - Token IDs identify specific markets
 - Prices are normalized to 0-1 probability scale
 - No authentication required for market data

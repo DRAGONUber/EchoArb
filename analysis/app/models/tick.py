@@ -22,7 +22,7 @@ class Tick(BaseModel):
     contract_id: str = Field(
         ...,
         min_length=1,
-        description="Contract identifier (ticker, token_id, or slug)"
+        description="Contract identifier (ticker or token_id)"
     )
 
     price: float = Field(

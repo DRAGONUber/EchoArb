@@ -74,7 +74,7 @@ KALSHI_PRIVATE_KEY_PATH=./keys/kalshi_private_key.pem
 KALSHI_WS_URL=wss://api.elections.kalshi.com/trade-api/ws/v2
 
 # Polymarket
-POLY_WS_URL=wss://ws-subscriptions-clob.polymarket.com/ws/market
+POLY_WS_URL=wss://ws-subscriptions-clob.polymarket.com/ws
 
 
 # Metrics
