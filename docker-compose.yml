@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Redis - Message broker
   redis:
@@ -12,26 +10,6 @@ services:
     command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - echoarb-network
-
-  # TimescaleDB - Time-series database
-  timescaledb:
-    image: timescale/timescaledb:latest-pg15
-    container_name: echoarb-timescaledb
-    environment:
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
-      POSTGRES_DB: ${DB_DATABASE:-echoarb}
-    ports:
-      - "5433:5432"
-    volumes:
-      - timescaledb_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -53,10 +31,10 @@ services:
       - KALSHI_API_KEY=${KALSHI_API_KEY:-}
       - KALSHI_PRIVATE_KEY_PATH=${KALSHI_PRIVATE_KEY_PATH:-}
       - KALSHI_WS_URL=${KALSHI_WS_URL:-wss://api.elections.kalshi.com/trade-api/ws/v2}
-      - POLY_WS_URL=${POLY_WS_URL:-wss://ws-subscriptions-clob.polymarket.com/ws}
+      - POLY_WS_URL=${POLY_WS_URL:-wss://ws-subscriptions-clob.polymarket.com/ws/market}
       - METRICS_PORT=9090
     ports:
-      - "9090:9090"  # Prometheus metrics
+      - "9090:9090"
     volumes:
       - ./keys:/app/keys:ro
     depends_on:
@@ -78,24 +56,14 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-      - DB_HOST=timescaledb
-      - DB_PORT=5432
-      - DB_DATABASE=${DB_DATABASE:-echoarb}
-      - DB_USER=${DB_USER:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD:-changeme}
       - API_PORT=8000
       - METRICS_ENABLED=true
       - METRICS_PORT=9091
-      - MARKET_PAIRS_PATH=/app/config/market_pairs.json
     ports:
-      - "8000:8000"  # FastAPI
-      - "9091:9091"  # Prometheus metrics
-    volumes:
-      - ./config:/app/config:ro
+      - "8000:8000"
+      - "9091:9091"
     depends_on:
       redis:
-        condition: service_healthy
-      timescaledb:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -158,8 +126,6 @@ services:
 
 volumes:
   redis_data:
-    driver: local
-  timescaledb_data:
     driver: local
   prometheus_data:
     driver: local

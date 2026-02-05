@@ -10,7 +10,6 @@ import msgpack
 from redis import asyncio as aioredis
 
 from app.config import settings
-from app.services.spread_calculator import SpreadCalculator
 from app.models.tick import Tick
 
 logger = logging.getLogger(__name__)
@@ -21,16 +20,10 @@ class RedisStreamConsumer:
     Consumes market ticks from Redis Stream
 
     Uses consumer groups for reliable processing with acknowledgments.
-    Never crashes - logs errors and continues processing.
     """
 
-    def __init__(
-        self,
-        redis_client: aioredis.Redis,
-        spread_calculator: SpreadCalculator | None = None
-    ):
+    def __init__(self, redis_client: aioredis.Redis):
         self.redis = redis_client
-        self.spread_calc = spread_calculator
         self.stream_name = settings.redis.stream_name
         self.consumer_group = settings.redis.consumer_group
         self.consumer_name = settings.redis.consumer_name
@@ -99,8 +92,6 @@ class RedisStreamConsumer:
 
         while self.running:
             try:
-                # Read from stream using consumer group
-                # XREADGROUP returns: [[stream_name, [(message_id, {field: value})]]]
                 messages = await self.redis.xreadgroup(
                     groupname=self.consumer_group,
                     consumername=self.consumer_name,
@@ -110,10 +101,8 @@ class RedisStreamConsumer:
                 )
 
                 if not messages:
-                    # No new messages, continue waiting
                     continue
 
-                # Process messages from this batch
                 for stream_name, message_list in messages:
                     for message_id, message_data in message_list:
                         await self._process_message(
@@ -126,25 +115,15 @@ class RedisStreamConsumer:
                 break
             except Exception as e:
                 logger.error(f"Error in consumer loop: {e}", exc_info=True)
-                # Don't crash - wait a bit and retry
                 await asyncio.sleep(1)
 
     async def _process_message(self, message_id: str, message_data: dict):
-        """
-        Process a single message from the stream
-
-        Args:
-            message_id: Redis stream message ID
-            message_data: Message fields (should contain 'data' field with msgpack bytes)
-        """
+        """Process a single message from the stream"""
         try:
-            # Extract msgpack data
-            # Redis returns bytes with b'' prefix
             data_bytes = message_data.get(b"data") or message_data.get("data")
 
             if not data_bytes:
                 logger.warning(f"Message {message_id} missing 'data' field")
-                # Acknowledge anyway to avoid reprocessing
                 await self.redis.xack(self.stream_name, self.consumer_group, message_id)
                 self.messages_failed += 1
                 return
@@ -163,25 +142,9 @@ class RedisStreamConsumer:
                 tick = Tick(**tick_dict)
             except Exception as e:
                 logger.error(f"Invalid tick data in message {message_id}: {e}")
-                logger.debug(f"Tick data: {tick_dict}")
                 await self.redis.xack(self.stream_name, self.consumer_group, message_id)
                 self.messages_failed += 1
                 return
-
-            # Update spread calculator
-            if self.spread_calc:
-                try:
-                    self.spread_calc.update_price(
-                        source=tick.source,
-                        contract_id=tick.contract_id,
-                        price=tick.price
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to update spread calculator: {e}", exc_info=True)
-                    # Still acknowledge to avoid infinite retries
-                    await self.redis.xack(self.stream_name, self.consumer_group, message_id)
-                    self.messages_failed += 1
-                    return
 
             # Acknowledge successful processing
             await self.redis.xack(self.stream_name, self.consumer_group, message_id)
@@ -190,16 +153,14 @@ class RedisStreamConsumer:
             self.last_message_id = message_id
 
             # Log periodically
-            if self.messages_processed % 100 == 0:
+            if self.messages_processed % 1000 == 0:
                 logger.info(
                     f"Consumer stats: processed={self.messages_processed}, "
-                    f"failed={self.messages_failed}, "
-                    f"last_id={message_id}"
+                    f"failed={self.messages_failed}, last_id={message_id}"
                 )
 
         except Exception as e:
             logger.error(f"Unexpected error processing message {message_id}: {e}", exc_info=True)
-            # Try to acknowledge anyway
             try:
                 await self.redis.xack(self.stream_name, self.consumer_group, message_id)
             except Exception as ack_error:
@@ -221,12 +182,10 @@ class RedisStreamConsumer:
     async def get_pending_count(self) -> int:
         """Get number of pending messages for this consumer"""
         try:
-            # XPENDING returns info about pending messages
             pending_info = await self.redis.xpending(
                 self.stream_name,
                 self.consumer_group
             )
-            # pending_info is [count, start_id, end_id, consumers]
             if pending_info:
                 if isinstance(pending_info, dict):
                     return pending_info.get("pending", 0)

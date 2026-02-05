@@ -110,18 +110,28 @@ func (p *PolymarketConnector) subscribe(conn *websocket.Conn) error {
 
 	p.logger.Infof("Subscribing to %d Polymarket tokens...", len(tokenIDs))
 
-	// 2. Subscribe
-	for _, id := range tokenIDs {
+	// Subscribe in batches (Polymarket accepts arrays of assets_ids)
+	batchSize := 100
+	for i := 0; i < len(tokenIDs); i += batchSize {
+		end := i + batchSize
+		if end > len(tokenIDs) {
+			end = len(tokenIDs)
+		}
+		batch := tokenIDs[i:end]
+
 		subscribeMsg := map[string]interface{}{
-			"type":   "subscribe",
-			"market": id,
+			"assets_ids": batch,
+			"type":       "market",
 		}
 
 		if err := conn.WriteJSON(subscribeMsg); err != nil {
+			p.logger.Warnf("Failed to subscribe batch %d-%d: %v", i, end, err)
 			continue
 		}
-		time.Sleep(5 * time.Millisecond) // Rate limit
+		time.Sleep(50 * time.Millisecond) // Rate limit between batches
 	}
+
+	p.logger.Info("Subscription complete")
 	return nil
 }
 
@@ -144,33 +154,67 @@ func (p *PolymarketConnector) processMessage(data []byte) {
 		return
 	}
 
-	// Filter types
-	msgType, _ := msg["type"].(string)
-	if msgType != "price_update" && msgType != "book_update" && msgType != "trade" {
+	// Filter by event_type (Polymarket uses: book, price_change, last_trade_price, tick_size_change)
+	eventType, _ := msg["event_type"].(string)
+	if eventType != "price_change" && eventType != "last_trade_price" && eventType != "book" {
 		return
 	}
 
 	// Extract Asset ID
 	assetID, _ := msg["asset_id"].(string)
 	if assetID == "" {
-		tokenID, _ := msg["token_id"].(string)
-		assetID = tokenID
-	}
-	
-	if assetID == "" {
 		return
 	}
 
-	// Extract Price
-	price, _ := msg["price"].(float64)
+	var price float64
+
+	// For price_change and last_trade_price, extract price directly
+	if eventType == "price_change" || eventType == "last_trade_price" {
+		if priceStr, ok := msg["price"].(string); ok {
+			fmt.Sscanf(priceStr, "%f", &price)
+		} else if priceFloat, ok := msg["price"].(float64); ok {
+			price = priceFloat
+		}
+	}
+
+	// For book events, calculate mid price from best bid/ask
+	if eventType == "book" {
+		bids, _ := msg["bids"].([]interface{})
+		asks, _ := msg["asks"].([]interface{})
+
+		var bestBid, bestAsk float64
+		if len(bids) > 0 {
+			if bid, ok := bids[0].(map[string]interface{}); ok {
+				if priceStr, ok := bid["price"].(string); ok {
+					fmt.Sscanf(priceStr, "%f", &bestBid)
+				}
+			}
+		}
+		if len(asks) > 0 {
+			if ask, ok := asks[0].(map[string]interface{}); ok {
+				if priceStr, ok := ask["price"].(string); ok {
+					fmt.Sscanf(priceStr, "%f", &bestAsk)
+				}
+			}
+		}
+
+		if bestBid > 0 && bestAsk > 0 {
+			price = (bestBid + bestAsk) / 2
+		} else if bestBid > 0 {
+			price = bestBid
+		} else if bestAsk > 0 {
+			price = bestAsk
+		}
+	}
+
 	if price == 0 {
-		return 
+		return
 	}
 
 	// Deduplication
 	if lastPrice, ok := p.lastPrices.Load(assetID); ok {
 		if lastPrice.(float64) == price {
-			return 
+			return
 		}
 	}
 	p.lastPrices.Store(assetID, price)

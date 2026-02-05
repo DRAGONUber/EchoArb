@@ -59,7 +59,7 @@ func Load() (*Config, error) {
 			MinIdleConns: getEnvInt("REDIS_MIN_IDLE_CONNS", 5),
 		},
 		KalshiWSURL: getEnv("KALSHI_WS_URL", "wss://api.elections.kalshi.com/trade-api/ws/v2"),
-		PolyWSURL:   getEnv("POLY_WS_URL", "wss://ws-subscriptions-clob.polymarket.com/ws"),
+		PolyWSURL:   getEnv("POLY_WS_URL", "wss://ws-subscriptions-clob.polymarket.com/ws/market"),
 
 		// Kalshi auth (optional)
 		KalshiAPIKey:        getEnv("KALSHI_API_KEY", ""),

@@ -18,7 +18,7 @@ class RedisSettings(BaseSettings):
     pool_size: int = Field(default=10, ge=1, description="Connection pool size")
     min_idle_conns: int = Field(default=5, ge=0, description="Minimum idle connections")
     stream_name: str = Field(default="market_ticks", description="Redis Stream name")
-    consumer_group: str = Field(default="spread_calculators", description="Consumer group name")
+    consumer_group: str = Field(default="tick_consumers", description="Consumer group name")
     consumer_name: str = Field(default="worker_1", description="Consumer name")
 
     model_config = SettingsConfigDict(env_prefix="REDIS_")
@@ -81,31 +81,6 @@ class Settings(BaseSettings):
     environment: str = Field(default="development", description="Environment: development, staging, production")
     log_level: str = Field(default="INFO", description="Logging level")
     debug: bool = Field(default=False, description="Debug mode")
-
-    # Market pairs configuration
-    market_pairs_path: str = Field(
-        default="./config/market_pairs.json",
-        description="Path to market pairs configuration JSON"
-    )
-
-    # Spread calculation settings
-    min_data_sources: int = Field(
-        default=2,
-        ge=1,
-        le=3,
-        description="Minimum number of data sources required to calculate spread"
-    )
-    alert_threshold_default: float = Field(
-        default=0.05,
-        ge=0.0,
-        le=1.0,
-        description="Default alert threshold (5% spread)"
-    )
-    price_cache_ttl_seconds: int = Field(
-        default=300,
-        ge=1,
-        description="Price cache TTL in seconds"
-    )
 
     # WebSocket settings
     ws_heartbeat_interval: int = Field(
@@ -170,7 +145,5 @@ settings = Settings()
 
 
 def get_settings() -> Settings:
-    """
-    Get settings instance (for FastAPI dependency injection)
-    """
+    """Get settings instance (for FastAPI dependency injection)"""
     return settings
