@@ -53,14 +53,12 @@ services:
       - KALSHI_API_KEY=${KALSHI_API_KEY}
       - KALSHI_PRIVATE_KEY_PATH=/app/keys/kalshi_private_key.pem
       - KALSHI_WS_URL=${KALSHI_WS_URL:-wss://api.elections.kalshi.com/trade-api/ws/v2}
-      - POLY_WS_URL=${POLY_WS_URL:-wss://ws-subscriptions-clob.polymarket.com/ws/market}
+      - POLY_WS_URL=${POLY_WS_URL:-wss://ws-subscriptions-clob.polymarket.com/ws}
       - METRICS_PORT=9090
-      - CONFIG_PATH=/app/config/market_pairs.json
     ports:
       - "9090:9090"  # Prometheus metrics
     volumes:
       - ./keys:/app/keys:ro
-      - ./config:/app/config:ro
     depends_on:
       redis:
         condition: service_healthy
@@ -88,12 +86,9 @@ services:
       - API_PORT=8000
       - METRICS_ENABLED=true
       - METRICS_PORT=9091
-      - MARKET_PAIRS_PATH=/app/config/market_pairs.json
     ports:
       - "8000:8000"  # FastAPI
       - "9091:9091"  # Prometheus metrics
-    volumes:
-      - ./config:/app/config:ro
     depends_on:
       redis:
         condition: service_healthy

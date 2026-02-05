@@ -5,33 +5,39 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/dragonuber/echoarb/ingestor/internal/config"
 	"github.com/dragonuber/echoarb/ingestor/internal/metrics"
 	"github.com/dragonuber/echoarb/ingestor/internal/models"
 	"github.com/dragonuber/echoarb/ingestor/internal/redis"
 	"github.com/dragonuber/echoarb/ingestor/internal/retry"
+	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
 
 const (
-	polySource   = "POLYMARKET"
-	polyPingInterval = 30 * time.Second
-	polyPongTimeout  = 60 * time.Second  // Must be > pingInterval to handle idle markets
+	polySource         = "POLYMARKET"
+	polyPingInterval   = 30 * time.Second
+	polyPongTimeout    = 60 * time.Second // Must be > pingInterval to handle idle markets
+	polyMarketsURL     = "https://gamma-api.polymarket.com/markets"
+	polyMaxFetchLimit  = 500
+	polySubscribeDelay = 5 * time.Millisecond
 )
 
 // PolymarketConnector handles Polymarket WebSocket connection
 type PolymarketConnector struct {
-	config       *config.Config
-	redis        *redis.Client
-	metrics      *metrics.Registry
-	logger       *zap.SugaredLogger
-	lastPrices   sync.Map
-	isConnected  bool
-	mu           sync.RWMutex
+	config      *config.Config
+	redis       *redis.Client
+	metrics     *metrics.Registry
+	logger      *zap.SugaredLogger
+	lastPrices  sync.Map
+	isConnected bool
+	mu          sync.RWMutex
 }
 
 // NewPolymarketConnector creates a new Polymarket connector
@@ -110,24 +116,97 @@ func (p *PolymarketConnector) connect(ctx context.Context) error {
 
 // subscribe subscribes to market updates
 func (p *PolymarketConnector) subscribe(conn *websocket.Conn) error {
-	for _, pair := range p.config.Pairs {
-		if pair.Polymarket == nil {
-			continue
-		}
+	allTokens, err := p.fetchActiveMarkets()
+	if err != nil {
+		return fmt.Errorf("failed to fetch Polymarket markets via Gamma API: %w", err)
+	}
+	tokenIDs := allTokens
+	if len(tokenIDs) == 0 {
+		return fmt.Errorf("no Polymarket markets available for subscription")
+	}
+	p.logger.Infof("Subscribing to %d Polymarket markets", len(tokenIDs))
 
+	for _, tokenID := range tokenIDs {
 		subscribeMsg := map[string]interface{}{
 			"type":   "subscribe",
-			"market": pair.Polymarket.TokenID,
+			"market": tokenID,
 		}
 
 		if err := conn.WriteJSON(subscribeMsg); err != nil {
-			return fmt.Errorf("failed to subscribe to %s: %w", pair.Polymarket.TokenID, err)
+			return fmt.Errorf("failed to subscribe to %s: %w", tokenID, err)
 		}
 
-		p.logger.Infof("Subscribed to Polymarket market: %s", pair.Polymarket.TokenID)
+		p.logger.Infof("Subscribed to Polymarket market: %s", tokenID)
+		time.Sleep(polySubscribeDelay)
 	}
 
 	return nil
+}
+
+type polymarketMarket struct {
+	TokenID      string   `json:"tokenId"`
+	TokenIDSnake string   `json:"token_id"`
+	ClobTokenIDs []string `json:"clobTokenIds"`
+	Closed       bool     `json:"closed"`
+}
+
+func (p *PolymarketConnector) fetchActiveMarkets() ([]string, error) {
+	p.logger.Info("Fetching active Polymarket markets via Gamma API")
+	client := &http.Client{Timeout: 15 * time.Second}
+
+	tokenIDs := []string{}
+	offset := 0
+
+	for {
+		query := url.Values{}
+		query.Set("closed", "false")
+		query.Set("limit", fmt.Sprintf("%d", polyMaxFetchLimit))
+		query.Set("offset", fmt.Sprintf("%d", offset))
+		requestURL := fmt.Sprintf("%s?%s", polyMarketsURL, query.Encode())
+
+		resp, err := client.Get(requestURL)
+		if err != nil {
+			return nil, err
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return nil, fmt.Errorf("polymarket markets request failed: %s", resp.Status)
+		}
+
+		var markets []polymarketMarket
+		if err := json.Unmarshal(body, &markets); err != nil {
+			return nil, err
+		}
+
+		if len(markets) == 0 {
+			break
+		}
+
+		for _, market := range markets {
+			if market.Closed {
+				continue
+			}
+			if len(market.ClobTokenIDs) > 0 {
+				tokenIDs = append(tokenIDs, market.ClobTokenIDs...)
+				continue
+			}
+			if market.TokenID != "" {
+				tokenIDs = append(tokenIDs, market.TokenID)
+				continue
+			}
+			if market.TokenIDSnake != "" {
+				tokenIDs = append(tokenIDs, market.TokenIDSnake)
+			}
+		}
+
+		offset += polyMaxFetchLimit
+	}
+
+	return tokenIDs, nil
 }
 
 // pingLoop sends periodic pings
@@ -189,7 +268,7 @@ func (p *PolymarketConnector) processMessage(data []byte) error {
 
 	// Polymarket message structure varies by type
 	msgType, _ := msg["type"].(string)
-	
+
 	switch msgType {
 	case "price_update", "book_update":
 		return p.processPriceUpdate(msg, startTime)
@@ -209,14 +288,14 @@ func (p *PolymarketConnector) processPriceUpdate(msg map[string]interface{}, sta
 		tokenID, _ := msg["token_id"].(string)
 		assetID = tokenID
 	}
-	
+
 	if assetID == "" {
 		return fmt.Errorf("missing asset_id")
 	}
 
 	// Price is usually in the range 0-1
 	price, _ := msg["price"].(float64)
-	
+
 	// Some messages have mid_price
 	if price == 0 {
 		midPrice, _ := msg["mid_price"].(float64)
@@ -267,7 +346,7 @@ func (p *PolymarketConnector) processTradeUpdate(msg map[string]interface{}, sta
 	// Extract trade details
 	assetID, _ := msg["asset_id"].(string)
 	price, _ := msg["price"].(float64)
-	
+
 	if assetID == "" || price == 0 {
 		return nil // Ignore incomplete trades
 	}

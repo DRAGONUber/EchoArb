@@ -5,37 +5,43 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/dragonuber/echoarb/ingestor/internal/auth"
 	"github.com/dragonuber/echoarb/ingestor/internal/config"
 	"github.com/dragonuber/echoarb/ingestor/internal/metrics"
 	"github.com/dragonuber/echoarb/ingestor/internal/models"
 	"github.com/dragonuber/echoarb/ingestor/internal/redis"
 	"github.com/dragonuber/echoarb/ingestor/internal/retry"
+	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
 
 const (
-	kalshiSource = "KALSHI"
-	pingInterval = 30 * time.Second
-	pongTimeout  = 60 * time.Second  // Must be > pingInterval to handle idle markets
+	kalshiSource         = "KALSHI"
+	pingInterval         = 30 * time.Second
+	pongTimeout          = 60 * time.Second // Must be > pingInterval to handle idle markets
+	kalshiMarketsURL     = "https://api.elections.kalshi.com/trade-api/v2/markets"
+	kalshiMaxFetchLimit  = 1000
+	kalshiSubscribeDelay = 10 * time.Millisecond
 )
 
 // KalshiConnector handles Kalshi WebSocket connection
 type KalshiConnector struct {
-	config       *config.Config
-	auth         *auth.KalshiAuth
-	redis        *redis.Client
-	metrics      *metrics.Registry
-	logger       *zap.SugaredLogger
-	
+	config  *config.Config
+	auth    *auth.KalshiAuth
+	redis   *redis.Client
+	metrics *metrics.Registry
+	logger  *zap.SugaredLogger
+
 	// State management
-	lastPrices   sync.Map // map[string]float64 for deduplication
-	isConnected  bool
-	mu           sync.RWMutex
+	lastPrices  sync.Map // map[string]float64 for deduplication
+	isConnected bool
+	mu          sync.RWMutex
 }
 
 // NewKalshiConnector creates a new Kalshi connector
@@ -130,28 +136,104 @@ func (k *KalshiConnector) connect(ctx context.Context) error {
 
 // subscribe subscribes to market updates
 func (k *KalshiConnector) subscribe(conn *websocket.Conn) error {
-	for _, pair := range k.config.Pairs {
-		if pair.Kalshi == nil {
-			continue
-		}
+	allTickers, err := k.fetchActiveMarkets()
+	if err != nil {
+		return fmt.Errorf("failed to fetch Kalshi markets via REST API: %w", err)
+	}
+	tickers := allTickers
+	if len(tickers) == 0 {
+		return fmt.Errorf("no Kalshi markets available for subscription")
+	}
+	k.logger.Infof("Subscribing to %d Kalshi markets", len(tickers))
 
+	for _, ticker := range tickers {
 		subscribeMsg := map[string]interface{}{
 			"id":  1,
 			"cmd": "subscribe",
 			"params": map[string]interface{}{
 				"channels":      []string{"orderbook_delta"},
-				"market_ticker": pair.Kalshi.Ticker,
+				"market_ticker": ticker,
 			},
 		}
 
 		if err := conn.WriteJSON(subscribeMsg); err != nil {
-			return fmt.Errorf("failed to subscribe to %s: %w", pair.Kalshi.Ticker, err)
+			return fmt.Errorf("failed to subscribe to %s: %w", ticker, err)
 		}
 
-		k.logger.Infof("Subscribed to Kalshi market: %s", pair.Kalshi.Ticker)
+		k.logger.Infof("Subscribed to Kalshi market: %s", ticker)
+		time.Sleep(kalshiSubscribeDelay)
 	}
 
 	return nil
+}
+
+type kalshiMarketResponse struct {
+	Markets []struct {
+		Ticker string `json:"ticker"`
+		Status string `json:"status"`
+	} `json:"markets"`
+	Cursor string `json:"cursor"`
+}
+
+func (k *KalshiConnector) fetchActiveMarkets() ([]string, error) {
+	k.logger.Info("Fetching active Kalshi markets via REST API")
+	client := &http.Client{Timeout: 15 * time.Second}
+
+	tickers := []string{}
+	cursor := ""
+
+	for {
+		query := url.Values{}
+		query.Set("status", "active")
+		query.Set("limit", fmt.Sprintf("%d", kalshiMaxFetchLimit))
+		if cursor != "" {
+			query.Set("cursor", cursor)
+		}
+		requestURL := fmt.Sprintf("%s?%s", kalshiMarketsURL, query.Encode())
+		pathWithQuery := fmt.Sprintf("/trade-api/v2/markets?%s", query.Encode())
+
+		req, err := http.NewRequest(http.MethodGet, requestURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		headers, err := k.auth.GenerateHeaders(http.MethodGet, pathWithQuery)
+		if err != nil {
+			return nil, err
+		}
+		req.Header = headers
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return nil, fmt.Errorf("kalshi markets request failed: %s", resp.Status)
+		}
+
+		var parsed kalshiMarketResponse
+		if err := json.Unmarshal(body, &parsed); err != nil {
+			return nil, err
+		}
+
+		for _, market := range parsed.Markets {
+			if market.Ticker == "" {
+				continue
+			}
+			tickers = append(tickers, market.Ticker)
+		}
+
+		if parsed.Cursor == "" {
+			break
+		}
+		cursor = parsed.Cursor
+	}
+
+	return tickers, nil
 }
 
 // pingLoop sends periodic pings

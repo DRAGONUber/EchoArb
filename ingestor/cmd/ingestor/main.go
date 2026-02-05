@@ -10,12 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/dragonuber/echoarb/ingestor/internal/config"
 	"github.com/dragonuber/echoarb/ingestor/internal/connectors"
 	"github.com/dragonuber/echoarb/ingestor/internal/metrics"
 	"github.com/dragonuber/echoarb/ingestor/internal/redis"
-	
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"go.uber.org/zap"
 )
 
@@ -38,7 +38,7 @@ func main() {
 
 	// Initialize metrics
 	metricsRegistry := metrics.NewRegistry()
-	
+
 	// Start metrics server
 	go startMetricsServer(cfg.MetricsPort, sugar)
 
@@ -54,16 +54,6 @@ func main() {
 	defer cancel()
 
 	// Initialize connectors
-	kalshiConn, err := connectors.NewKalshiConnector(
-		cfg,
-		redisClient,
-		metricsRegistry,
-		sugar,
-	)
-	if err != nil {
-		sugar.Fatalf("Failed to create Kalshi connector: %v", err)
-	}
-
 	polyConn := connectors.NewPolymarketConnector(
 		cfg,
 		redisClient,
@@ -71,16 +61,30 @@ func main() {
 		sugar,
 	)
 
-	// Start connectors (Kalshi and Polymarket only)
-	sugar.Info("Starting connectors (Kalshi + Polymarket)...")
+	// Start connectors
+	sugar.Info("Starting connectors...")
 
-	go kalshiConn.Start(ctx)
+	if cfg.HasKalshiCredentials() {
+		kalshiConn, err := connectors.NewKalshiConnector(
+			cfg,
+			redisClient,
+			metricsRegistry,
+			sugar,
+		)
+		if err != nil {
+			sugar.Fatalf("Failed to create Kalshi connector: %v", err)
+		}
+		go kalshiConn.Start(ctx)
+	} else {
+		sugar.Warn("Kalshi credentials not configured; skipping Kalshi connector")
+	}
+
 	go polyConn.Start(ctx)
 
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	
+
 	<-sigChan
 	sugar.Info("Received shutdown signal")
 
@@ -90,7 +94,7 @@ func main() {
 
 	sugar.Info("Shutting down gracefully...")
 	cancel() // Cancel main context to stop all connectors
-	
+
 	// Wait for shutdown or timeout
 	<-shutdownCtx.Done()
 	sugar.Info("Shutdown complete")
@@ -98,10 +102,10 @@ func main() {
 
 func startMetricsServer(port int, logger *zap.SugaredLogger) {
 	mux := http.NewServeMux()
-	
+
 	// Prometheus metrics endpoint
 	mux.Handle("/metrics", promhttp.Handler())
-	
+
 	// Health check endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -110,7 +114,7 @@ func startMetricsServer(port int, logger *zap.SugaredLogger) {
 
 	addr := fmt.Sprintf(":%d", port)
 	logger.Infof("Starting metrics server on %s", addr)
-	
+
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		logger.Fatalf("Metrics server failed: %v", err)
 	}
