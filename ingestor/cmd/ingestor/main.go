@@ -53,22 +53,24 @@ func main() {
 	// Create tick channel (Buffer 1000 to handle bursts)
 	msgChan := make(chan models.Tick, 1000)
 
-	// Initialize connectors
-	// Note: We pass sugar (Logger) and msgChan. No Redis client needed here.
-	kalshiConn := connectors.NewKalshiConnector(cfg, sugar, msgChan)
-	polyConn := connectors.NewPolymarketConnector(cfg, sugar, msgChan)
-
 	// Start connectors
 	sugar.Info("Starting connectors...")
 
-	// Kalshi
-	go func() {
-		if err := kalshiConn.Start(); err != nil {
-			sugar.Errorf("Kalshi connector failed: %v", err)
-		}
-	}()
+	// Kalshi (only if credentials are configured)
+	if cfg.HasKalshiCredentials() {
+		kalshiConn := connectors.NewKalshiConnector(cfg, sugar, msgChan)
+		go func() {
+			if err := kalshiConn.Start(); err != nil {
+				sugar.Errorf("Kalshi connector failed: %v", err)
+			}
+		}()
+		sugar.Info("Kalshi connector enabled")
+	} else {
+		sugar.Info("Kalshi connector disabled (no credentials configured)")
+	}
 
-	// Polymarket
+	// Polymarket (always start)
+	polyConn := connectors.NewPolymarketConnector(cfg, sugar, msgChan)
 	go func() {
 		if err := polyConn.Start(); err != nil {
 			sugar.Errorf("Polymarket connector failed: %v", err)

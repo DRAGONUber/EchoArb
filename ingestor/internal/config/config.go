@@ -2,7 +2,6 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -19,15 +18,12 @@ type Config struct {
 	Redis RedisConfig `json:"redis"`
 
 	// API endpoints
-	KalshiWSURL    string `json:"kalshi_ws_url"`
-	PolyWSURL      string `json:"poly_ws_url"`
+	KalshiWSURL string `json:"kalshi_ws_url"`
+	PolyWSURL   string `json:"poly_ws_url"`
 
 	// Kalshi authentication
 	KalshiAPIKey        string `json:"kalshi_api_key"`
 	KalshiPrivateKeyPEM string `json:"kalshi_private_key_pem"` // Path to PEM file
-
-	// Market subscriptions
-	Subscriptions []MarketSubscription `json:"subscriptions"`
 
 	// Connection settings
 	Reconnect ReconnectConfig `json:"reconnect"`
@@ -48,24 +44,8 @@ type ReconnectConfig struct {
 	MaxRetries      int           `json:"max_retries"` // 0 = infinite
 }
 
-type MarketSubscription struct {
-	ID          string           `json:"id"`
-	Description string           `json:"description"`
-	Kalshi      *KalshiMarket    `json:"kalshi,omitempty"`
-	Polymarket  *PolymarketMarket `json:"polymarket,omitempty"`
-}
-
-type KalshiMarket struct {
-	Ticker string `json:"ticker"`
-}
-
-type PolymarketMarket struct {
-	TokenID string `json:"token_id"`
-}
-
-// Load reads configuration from file and environment variables
+// Load reads configuration from environment variables
 func Load() (*Config, error) {
-	// Default configuration
 	cfg := &Config{
 		Environment: getEnv("ENVIRONMENT", "development"),
 		MetricsPort: getEnvInt("METRICS_PORT", 9090),
@@ -78,24 +58,18 @@ func Load() (*Config, error) {
 			PoolSize:     getEnvInt("REDIS_POOL_SIZE", 10),
 			MinIdleConns: getEnvInt("REDIS_MIN_IDLE_CONNS", 5),
 		},
-		KalshiWSURL:    getEnv("KALSHI_WS_URL", "wss://api.elections.kalshi.com/trade-api/ws/v2"),
-		PolyWSURL:      getEnv("POLY_WS_URL", "wss://ws-subscriptions-clob.polymarket.com/ws"),
-		
-		// Kalshi auth
+		KalshiWSURL: getEnv("KALSHI_WS_URL", "wss://api.elections.kalshi.com/trade-api/ws/v2"),
+		PolyWSURL:   getEnv("POLY_WS_URL", "wss://ws-subscriptions-clob.polymarket.com/ws"),
+
+		// Kalshi auth (optional)
 		KalshiAPIKey:        getEnv("KALSHI_API_KEY", ""),
-		KalshiPrivateKeyPEM: getEnv("KALSHI_PRIVATE_KEY_PATH", "./keys/kalshi_private_key.pem"),
-		
+		KalshiPrivateKeyPEM: getEnv("KALSHI_PRIVATE_KEY_PATH", ""),
+
 		Reconnect: ReconnectConfig{
 			InitialInterval: 5 * time.Second,
 			MaxInterval:     5 * time.Minute,
 			MaxRetries:      0, // Infinite retries
 		},
-	}
-
-	// Load market subscriptions from JSON file if provided
-	configPath := getEnv("CONFIG_PATH", "./config/market_pairs.json")
-	if err := loadSubscriptions(configPath, cfg); err != nil {
-		return nil, fmt.Errorf("failed to load market subscriptions: %w", err)
 	}
 
 	// Validate configuration
@@ -106,27 +80,9 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-func loadSubscriptions(path string, cfg *Config) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		// Config file is optional in development
-		if os.IsNotExist(err) && cfg.Environment == "development" {
-			cfg.Subscriptions = []MarketSubscription{} // Empty subscriptions for testing
-			return nil
-		}
-		return err
-	}
-
-	var subscriptionsConfig struct {
-		Subscriptions []MarketSubscription `json:"subscriptions"`
-	}
-
-	if err := json.Unmarshal(data, &subscriptionsConfig); err != nil {
-		return err
-	}
-
-	cfg.Subscriptions = subscriptionsConfig.Subscriptions
-	return nil
+// HasKalshiCredentials returns true if Kalshi API key and private key path are configured
+func (c *Config) HasKalshiCredentials() bool {
+	return c.KalshiAPIKey != "" && c.KalshiPrivateKeyPEM != ""
 }
 
 // Validate checks if configuration is valid
@@ -134,18 +90,19 @@ func (c *Config) Validate() error {
 	if c.Redis.Host == "" {
 		return fmt.Errorf("redis host is required")
 	}
-	
-	if c.KalshiAPIKey == "" {
-		return fmt.Errorf("KALSHI_API_KEY environment variable is required")
-	}
 
-	if c.KalshiPrivateKeyPEM == "" {
-		return fmt.Errorf("KALSHI_PRIVATE_KEY_PATH environment variable is required")
-	}
-
-	// Check if private key file exists
-	if _, err := os.Stat(c.KalshiPrivateKeyPEM); os.IsNotExist(err) {
-		return fmt.Errorf("Kalshi private key file not found: %s", c.KalshiPrivateKeyPEM)
+	// Validate Kalshi credentials if at least one is set
+	// If incomplete or invalid, clear them to disable Kalshi (Polymarket still runs)
+	if c.KalshiAPIKey != "" || c.KalshiPrivateKeyPEM != "" {
+		if c.KalshiAPIKey == "" || c.KalshiPrivateKeyPEM == "" {
+			// Incomplete credentials - disable Kalshi
+			c.KalshiAPIKey = ""
+			c.KalshiPrivateKeyPEM = ""
+		} else if _, err := os.Stat(c.KalshiPrivateKeyPEM); os.IsNotExist(err) {
+			// Private key file not found - disable Kalshi
+			c.KalshiAPIKey = ""
+			c.KalshiPrivateKeyPEM = ""
+		}
 	}
 
 	return nil
