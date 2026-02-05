@@ -110,7 +110,7 @@ func (p *PolymarketConnector) connect(ctx context.Context) error {
 
 // subscribe subscribes to market updates
 func (p *PolymarketConnector) subscribe(conn *websocket.Conn) error {
-	for _, pair := range p.config.Pairs {
+	for _, pair := range p.config.Subscriptions {
 		if pair.Polymarket == nil {
 			continue
 		}

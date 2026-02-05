@@ -74,10 +74,8 @@ KALSHI_PRIVATE_KEY_PATH=./keys/kalshi_private_key.pem
 KALSHI_WS_URL=wss://api.elections.kalshi.com/trade-api/ws/v2
 
 # Polymarket
-POLY_WS_URL=wss://ws-subscriptions-clob.polymarket.com/ws/market
+POLY_WS_URL=wss://ws-subscriptions-clob.polymarket.com/ws
 
-# Manifold
-MANIFOLD_API_URL=https://api.manifold.markets/v0/markets
 
 # Metrics
 METRICS_PORT=9090
