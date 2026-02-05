@@ -69,10 +69,7 @@ Example configuration:
 }
 ```
 
-Note: Raw tick mode uses the nested `kalshi` and `polymarket` objects; transform and alert fields are ignored.
-The file name remains `market_pairs.json` for compatibility, but the schema uses `subscriptions`.
-
-By default, the ingestor fetches the full active market list from Kalshi and Polymarket and subscribes to all markets.
+Note: `kalshi_transform`, `poly_transform`, and `alert_threshold` are ignored in raw tick mode.
 
 ### Step 4: Start Services
 

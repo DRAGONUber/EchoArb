@@ -73,9 +73,15 @@ export default function Home() {
         console.error('Failed to fetch initial data:', error);
       }
     }
+  }, [updateLatency]);
 
-    fetchInitialData();
-  }, []);
+  // 3. Initialize WebSocket with the stable handler
+  const { connected } = useWebSocket({
+    url: getWebSocketURL('/ws/spreads'),
+    onMessage: handleWebSocketMessage,
+    reconnectInterval: 3000,
+    maxReconnectAttempts: 10,
+  });
 
   // Tick rate updater
   useEffect(() => {
