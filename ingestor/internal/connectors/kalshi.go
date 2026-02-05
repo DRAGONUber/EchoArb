@@ -126,12 +126,12 @@ func (k *KalshiConnector) fetchActiveMarkets() ([]string, error) {
 func (k *KalshiConnector) subscribe(tickers []string) error {
 	k.logger.Infof("Subscribing to %d Kalshi markets...", len(tickers))
 
-	for _, ticker := range tickers {
+	for i, ticker := range tickers {
 		subscribeMsg := map[string]interface{}{
-			"id":  1,
+			"id":  i + 1,
 			"cmd": "subscribe",
 			"params": map[string]interface{}{
-				"channels":      []string{"orderbook_delta"},
+				"channels":      []string{"ticker"},
 				"market_ticker": ticker,
 			},
 		}
@@ -142,7 +142,7 @@ func (k *KalshiConnector) subscribe(tickers []string) error {
 			continue
 		}
 		k.mu.Unlock()
-		
+
 		time.Sleep(10 * time.Millisecond) // Rate limit protection
 	}
 	return nil
@@ -162,31 +162,53 @@ func (k *KalshiConnector) readLoop() {
 }
 
 func (k *KalshiConnector) processMessage(data []byte) {
-	var msg map[string]interface{}
-	if err := json.Unmarshal(data, &msg); err != nil {
+	var envelope map[string]interface{}
+	if err := json.Unmarshal(data, &envelope); err != nil {
 		return
 	}
 
-	if msgType, ok := msg["type"].(string); !ok || msgType != "orderbook_delta" {
+	// Kalshi messages have type at top level, data nested in "msg"
+	msgType, _ := envelope["type"].(string)
+	if msgType != "ticker" {
 		return
 	}
 
-	ticker, _ := msg["ticker"].(string)
+	// Extract nested msg object
+	msgData, ok := envelope["msg"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	ticker, _ := msgData["market_ticker"].(string)
 	if ticker == "" {
 		return
 	}
 
-	yesBid, _ := msg["yes_bid"].(float64)
-	yesAsk, _ := msg["yes_ask"].(float64)
-	sourceTS, _ := msg["ts"].(float64)
+	yesBid, _ := msgData["yes_bid"].(float64)
+	yesAsk, _ := msgData["yes_ask"].(float64)
+	sourceTS, _ := msgData["ts"].(float64)
 
-	// Calculate Mid Price
-	price := (yesBid + yesAsk) / 200.0
+	// Calculate Mid Price (prices are in cents 1-99, convert to 0-1)
+	var price float64
+	if yesBid > 0 && yesAsk > 0 {
+		price = (yesBid + yesAsk) / 200.0
+	} else if yesBid > 0 {
+		price = yesBid / 100.0
+	} else if yesAsk > 0 {
+		price = yesAsk / 100.0
+	} else {
+		// Fall back to price field if available
+		if p, ok := msgData["price"].(float64); ok && p > 0 {
+			price = p / 100.0
+		} else {
+			return
+		}
+	}
 
 	// Deduplication check
 	if lastPrice, ok := k.lastPrices.Load(ticker); ok {
 		if lastPrice.(float64) == price {
-			return 
+			return
 		}
 	}
 	k.lastPrices.Store(ticker, price)
@@ -196,7 +218,7 @@ func (k *KalshiConnector) processMessage(data []byte) {
 		Source:          "KALSHI",
 		ContractID:      ticker,
 		Price:           price,
-		TimestampSource: int64(sourceTS * 1000), 
+		TimestampSource: int64(sourceTS * 1000),
 		TimestampIngest: time.Now().UnixMilli(),
 	}
 }

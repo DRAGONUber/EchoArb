@@ -149,82 +149,106 @@ func (p *PolymarketConnector) readLoop() {
 }
 
 func (p *PolymarketConnector) processMessage(data []byte) {
-	var msg map[string]interface{}
-	if err := json.Unmarshal(data, &msg); err != nil {
-		return
+	// Polymarket sends messages as arrays of book updates
+	var updates []map[string]interface{}
+	if err := json.Unmarshal(data, &updates); err != nil {
+		// Try single object format as fallback
+		var single map[string]interface{}
+		if err := json.Unmarshal(data, &single); err != nil {
+			return
+		}
+		updates = []map[string]interface{}{single}
 	}
 
-	// Filter by event_type (Polymarket uses: book, price_change, last_trade_price, tick_size_change)
-	eventType, _ := msg["event_type"].(string)
-	if eventType != "price_change" && eventType != "last_trade_price" && eventType != "book" {
-		return
-	}
+	for _, msg := range updates {
+		// Extract Asset ID
+		assetID, _ := msg["asset_id"].(string)
+		if assetID == "" {
+			continue
+		}
 
-	// Extract Asset ID
-	assetID, _ := msg["asset_id"].(string)
-	if assetID == "" {
-		return
-	}
+		var price float64
 
-	var price float64
-
-	// For price_change and last_trade_price, extract price directly
-	if eventType == "price_change" || eventType == "last_trade_price" {
+		// Check for price field directly (price_change events)
 		if priceStr, ok := msg["price"].(string); ok {
 			fmt.Sscanf(priceStr, "%f", &price)
 		} else if priceFloat, ok := msg["price"].(float64); ok {
 			price = priceFloat
 		}
-	}
 
-	// For book events, calculate mid price from best bid/ask
-	if eventType == "book" {
-		bids, _ := msg["bids"].([]interface{})
-		asks, _ := msg["asks"].([]interface{})
+		// If no direct price, calculate mid from orderbook
+		if price == 0 {
+			bids, _ := msg["bids"].([]interface{})
+			asks, _ := msg["asks"].([]interface{})
 
-		var bestBid, bestAsk float64
-		if len(bids) > 0 {
-			if bid, ok := bids[0].(map[string]interface{}); ok {
-				if priceStr, ok := bid["price"].(string); ok {
-					fmt.Sscanf(priceStr, "%f", &bestBid)
+			var bestBid, bestAsk float64
+
+			// Find highest bid
+			for _, b := range bids {
+				if bid, ok := b.(map[string]interface{}); ok {
+					if priceStr, ok := bid["price"].(string); ok {
+						var p float64
+						fmt.Sscanf(priceStr, "%f", &p)
+						if p > bestBid {
+							bestBid = p
+						}
+					}
 				}
 			}
-		}
-		if len(asks) > 0 {
-			if ask, ok := asks[0].(map[string]interface{}); ok {
-				if priceStr, ok := ask["price"].(string); ok {
-					fmt.Sscanf(priceStr, "%f", &bestAsk)
+
+			// Find lowest ask
+			bestAsk = 999.0
+			for _, a := range asks {
+				if ask, ok := a.(map[string]interface{}); ok {
+					if priceStr, ok := ask["price"].(string); ok {
+						var p float64
+						fmt.Sscanf(priceStr, "%f", &p)
+						if p < bestAsk {
+							bestAsk = p
+						}
+					}
 				}
+			}
+			if bestAsk == 999.0 {
+				bestAsk = 0
+			}
+
+			if bestBid > 0 && bestAsk > 0 {
+				price = (bestBid + bestAsk) / 2
+			} else if bestBid > 0 {
+				price = bestBid
+			} else if bestAsk > 0 {
+				price = bestAsk
 			}
 		}
 
-		if bestBid > 0 && bestAsk > 0 {
-			price = (bestBid + bestAsk) / 2
-		} else if bestBid > 0 {
-			price = bestBid
-		} else if bestAsk > 0 {
-			price = bestAsk
+		if price == 0 {
+			continue
 		}
-	}
 
-	if price == 0 {
-		return
-	}
-
-	// Deduplication
-	if lastPrice, ok := p.lastPrices.Load(assetID); ok {
-		if lastPrice.(float64) == price {
-			return
+		// Parse timestamp if available
+		var sourceTS int64
+		if tsStr, ok := msg["timestamp"].(string); ok {
+			fmt.Sscanf(tsStr, "%d", &sourceTS)
+		} else {
+			sourceTS = time.Now().UnixMilli()
 		}
-	}
-	p.lastPrices.Store(assetID, price)
 
-	// Send to Channel
-	p.msgChan <- models.Tick{
-		Source:          "POLYMARKET",
-		ContractID:      assetID,
-		Price:           price,
-		TimestampSource: time.Now().UnixMilli(),
-		TimestampIngest: time.Now().UnixMilli(),
+		// Deduplication
+		if lastPrice, ok := p.lastPrices.Load(assetID); ok {
+			if lastPrice.(float64) == price {
+				continue
+			}
+		}
+		p.lastPrices.Store(assetID, price)
+
+		// Send to Channel
+		p.msgChan <- models.Tick{
+			Source:          "POLYMARKET",
+			ContractID:      assetID,
+			Price:           price,
+			TimestampSource: sourceTS,
+			TimestampIngest: time.Now().UnixMilli(),
+		}
 	}
 }
