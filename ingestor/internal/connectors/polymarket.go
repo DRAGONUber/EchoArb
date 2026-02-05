@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -21,6 +24,9 @@ const (
 	polySource   = "POLYMARKET"
 	polyPingInterval = 30 * time.Second
 	polyPongTimeout  = 60 * time.Second  // Must be > pingInterval to handle idle markets
+	polyMarketsURL = "https://gamma-api.polymarket.com/markets"
+	polyMaxFetchLimit = 500
+	polySubscribeDelay = 5 * time.Millisecond
 )
 
 // PolymarketConnector handles Polymarket WebSocket connection
@@ -110,24 +116,94 @@ func (p *PolymarketConnector) connect(ctx context.Context) error {
 
 // subscribe subscribes to market updates
 func (p *PolymarketConnector) subscribe(conn *websocket.Conn) error {
-	for _, pair := range p.config.Subscriptions {
-		if pair.Polymarket == nil {
-			continue
-		}
+	allTokens, err := p.fetchActiveMarkets()
+	if err != nil {
+		return err
+	}
+	tokenIDs := allTokens
+	p.logger.Infof("Subscribing to %d Polymarket markets", len(tokenIDs))
 
+	for _, tokenID := range tokenIDs {
 		subscribeMsg := map[string]interface{}{
 			"type":   "subscribe",
-			"market": pair.Polymarket.TokenID,
+			"market": tokenID,
 		}
 
 		if err := conn.WriteJSON(subscribeMsg); err != nil {
-			return fmt.Errorf("failed to subscribe to %s: %w", pair.Polymarket.TokenID, err)
+			return fmt.Errorf("failed to subscribe to %s: %w", tokenID, err)
 		}
 
-		p.logger.Infof("Subscribed to Polymarket market: %s", pair.Polymarket.TokenID)
+		p.logger.Infof("Subscribed to Polymarket market: %s", tokenID)
+		time.Sleep(polySubscribeDelay)
 	}
 
 	return nil
+}
+
+type polymarketMarket struct {
+	TokenID      string   `json:"tokenId"`
+	TokenIDSnake string   `json:"token_id"`
+	ClobTokenIDs []string `json:"clobTokenIds"`
+	Closed       bool     `json:"closed"`
+}
+
+func (p *PolymarketConnector) fetchActiveMarkets() ([]string, error) {
+	p.logger.Info("Fetching active Polymarket markets via Gamma API")
+	client := &http.Client{Timeout: 15 * time.Second}
+
+	tokenIDs := []string{}
+	offset := 0
+
+	for {
+		query := url.Values{}
+		query.Set("closed", "false")
+		query.Set("limit", fmt.Sprintf("%d", polyMaxFetchLimit))
+		query.Set("offset", fmt.Sprintf("%d", offset))
+		requestURL := fmt.Sprintf("%s?%s", polyMarketsURL, query.Encode())
+
+		resp, err := client.Get(requestURL)
+		if err != nil {
+			return nil, err
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return nil, fmt.Errorf("polymarket markets request failed: %s", resp.Status)
+		}
+
+		var markets []polymarketMarket
+		if err := json.Unmarshal(body, &markets); err != nil {
+			return nil, err
+		}
+
+		if len(markets) == 0 {
+			break
+		}
+
+		for _, market := range markets {
+			if market.Closed {
+				continue
+			}
+			if len(market.ClobTokenIDs) > 0 {
+				tokenIDs = append(tokenIDs, market.ClobTokenIDs...)
+				continue
+			}
+			if market.TokenID != "" {
+				tokenIDs = append(tokenIDs, market.TokenID)
+				continue
+			}
+			if market.TokenIDSnake != "" {
+				tokenIDs = append(tokenIDs, market.TokenIDSnake)
+			}
+		}
+
+		offset += polyMaxFetchLimit
+	}
+
+	return tokenIDs, nil
 }
 
 // pingLoop sends periodic pings

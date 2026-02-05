@@ -76,7 +76,6 @@ KALSHI_WS_URL=wss://api.elections.kalshi.com/trade-api/ws/v2
 # Polymarket
 POLY_WS_URL=wss://ws-subscriptions-clob.polymarket.com/ws
 
-
 # Metrics
 METRICS_PORT=9090
 

@@ -159,7 +159,10 @@ Edit `config/market_pairs.json`:
 }
 ```
 
-Note: `kalshi_transform`, `poly_transform`, and `alert_threshold` are ignored in raw tick mode.
+Note: Raw tick mode uses the nested `kalshi` and `polymarket` objects; transform and alert fields are ignored.
+The file name remains `market_pairs.json` for compatibility, but the schema uses `subscriptions`.
+
+By default, the ingestor fetches the full active market list from Kalshi and Polymarket and subscribes to all markets.
 
 ### 2.5 Transform Strategies Explained (Legacy)
 
@@ -276,7 +279,7 @@ curl http://localhost:8000/health
 curl http://localhost:8000/api/v1/ticks | jq .
 
 # View configured market subscriptions
-curl http://localhost:8000/api/v1/pairs | jq .
+curl http://localhost:8000/api/v1/subscriptions | jq .
 
 # Check consumer statistics
 curl http://localhost:8000/api/v1/stats/consumer | jq .
@@ -414,7 +417,7 @@ curl http://localhost:8000/api/v1/ticks
 
 4. Verify market subscriptions configuration:
 ```bash
-curl http://localhost:8000/api/v1/pairs
+curl http://localhost:8000/api/v1/subscriptions
 # Should return your configured subscriptions
 ```
 

@@ -63,7 +63,6 @@
 3. **REST API Endpoints**
    - `/api/v1/ticks` - Get recent raw ticks
    - `/api/v1/subscriptions` - Get market subscription config
-   - `/api/v1/pairs` - Get market subscription config
    - `/api/v1/stats/cache` - Cache statistics
    - `/api/v1/stats/consumer` - Consumer statistics
    - `/api/v1/debug/update_price` - Manual price update (testing)
@@ -187,7 +186,6 @@ Go Ingestor (WebSocket) → Redis Streams → Python Analysis (FastAPI) → Next
      ↓                          ↓                    ↓                        ↓
   Kalshi API            msgpack encoding      Tick Stream          Real-time Dashboard
   Polymarket API        Pub/Sub broadcast     REST API             WebSocket updates
-  Manifold API                                 TimescaleDB          Tick list
 ```
 
 ## 📝 Design Decisions Implemented
