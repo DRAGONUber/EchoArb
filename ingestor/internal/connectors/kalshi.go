@@ -114,6 +114,12 @@ func (k *KalshiConnector) fetchActiveMarkets() ([]string, error) {
 	for _, m := range result.Markets {
 		tickers = append(tickers, m.Ticker)
 	}
+
+	if len(tickers) == 0 {
+		return nil, fmt.Errorf("discovery returned no active markets")
+	}
+
+	k.logger.Infof("Discovered %d active Kalshi markets", len(tickers))
 	return tickers, nil
 }
 

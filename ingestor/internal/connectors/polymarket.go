@@ -67,17 +67,21 @@ type PolymarketMarket struct {
 
 func (p *PolymarketConnector) fetchActiveMarkets() ([]string, error) {
 	p.logger.Info("Fetching all active Polymarket tokens via Gamma API...")
-	
+
 	url := "https://gamma-api.polymarket.com/markets?closed=false&limit=500"
 	resp, err := http.Get(url)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("api returned status: %s", resp.Status)
+	}
+
 	var markets []PolymarketMarket
 	if err := json.NewDecoder(resp.Body).Decode(&markets); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode error: %w", err)
 	}
 
 	var allTokenIDs []string
@@ -89,17 +93,22 @@ func (p *PolymarketConnector) fetchActiveMarkets() ([]string, error) {
 			}
 		}
 	}
+
+	if len(allTokenIDs) == 0 {
+		return nil, fmt.Errorf("discovery returned no active tokens")
+	}
+
+	p.logger.Infof("Discovered %d active Polymarket tokens", len(allTokenIDs))
 	return allTokenIDs, nil
 }
 
 func (p *PolymarketConnector) subscribe(conn *websocket.Conn) error {
-	// 1. Fetch
 	tokenIDs, err := p.fetchActiveMarkets()
 	if err != nil {
 		return fmt.Errorf("discovery failed: %w", err)
 	}
 
-	p.logger.Infof("Discovery complete. Subscribing to %d Polymarket tokens...", len(tokenIDs))
+	p.logger.Infof("Subscribing to %d Polymarket tokens...", len(tokenIDs))
 
 	// 2. Subscribe
 	for _, id := range tokenIDs {
