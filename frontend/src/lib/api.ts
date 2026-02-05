@@ -16,14 +16,6 @@ export interface SpreadResult {
   data_completeness: number;
 }
 
-export interface Tick {
-  source: 'KALSHI' | 'POLYMARKET';
-  contract_id: string;
-  price: number;
-  timestamp: string;
-  latency_ms?: number;
-}
-
 export interface Alert {
   spread_result: SpreadResult;
   threshold: number;
@@ -116,10 +108,6 @@ class APIClient {
 
   async getConsumerStats(): Promise<ConsumerStats> {
     return this.request<ConsumerStats>('/api/v1/stats/consumer');
-  }
-
-  async getTicks(): Promise<Tick[]> {
-    return this.request<Tick[]>('/api/v1/ticks');
   }
 
   // Health check

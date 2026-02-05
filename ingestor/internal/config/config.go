@@ -91,9 +91,11 @@ func (c *Config) Validate() error {
 		if c.KalshiAPIKey == "" {
 			return fmt.Errorf("KALSHI_API_KEY environment variable is required when Kalshi is enabled")
 		}
+
 		if c.KalshiPrivateKeyPEM == "" {
 			return fmt.Errorf("KALSHI_PRIVATE_KEY_PATH environment variable is required when Kalshi is enabled")
 		}
+
 		// Check if private key file exists
 		if _, err := os.Stat(c.KalshiPrivateKeyPEM); os.IsNotExist(err) {
 			return fmt.Errorf("Kalshi private key file not found: %s", c.KalshiPrivateKeyPEM)

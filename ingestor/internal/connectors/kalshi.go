@@ -136,14 +136,14 @@ func (k *KalshiConnector) connect(ctx context.Context) error {
 
 // subscribe subscribes to market updates
 func (k *KalshiConnector) subscribe(conn *websocket.Conn) error {
-	allTickers, err := k.fetchActiveMarkets()
+	tickers, err := k.fetchActiveMarkets()
 	if err != nil {
 		return fmt.Errorf("failed to fetch Kalshi markets via REST API: %w", err)
 	}
-	tickers := allTickers
 	if len(tickers) == 0 {
 		return fmt.Errorf("no Kalshi markets available for subscription")
 	}
+
 	k.logger.Infof("Subscribing to %d Kalshi markets", len(tickers))
 
 	for _, ticker := range tickers {

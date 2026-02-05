@@ -1,6 +1,6 @@
-# EchoArb - Real-Time Prediction Market Tick Tape
+# EchoArb - Real-Time Prediction Market Arbitrage Scanner
 
-A high-performance, real-time tick streaming system for prediction markets. Built with Go for low-latency data ingestion, Python/FastAPI for streaming APIs, and Next.js for real-time visualization.
+A high-performance, real-time arbitrage detection system for prediction markets. Built with Go for low-latency data ingestion, Python/FastAPI for business logic, and Next.js for real-time visualization.
 
 ## Supported Platforms
 
@@ -27,14 +27,23 @@ The system follows a three-tier architecture optimized for low latency and high 
                    │
 ┌──────────────────┼──────────────────────────────┐
 │         Python Analysis (Port 8000)             │
-│         ┌────────────────┐                      │
-│         │  Tick Stream   │                      │
+│         ┌────────▼───────┐                      │
+│         │  Transform     │                      │
+│         │  Layer         │                      │
 │         └────────┬───────┘                      │
+│                  ▼                              │
+│         ┌────────────────┐                      │
+│         │  Spread Calc   │                      │
+│         └────────┬───────┘                      │
+│                  │                              │
+│         ┌────────▼───────┐                      │
+│         │ TimescaleDB    │                      │
+│         └────────────────┘                      │
 └──────────────────┼──────────────────────────────┘
-                   │ WebSocket (raw ticks)
+                   │ WebSocket
 ┌──────────────────▼──────────────────────────────┐
 │         Next.js Frontend (Port 3000)            │
-│         Real-time tick tape and latency         │
+│         Real-time charts and alerts             │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -42,15 +51,18 @@ The system follows a three-tier architecture optimized for low latency and high 
 
 1. **Ingestion Layer (Go)**: WebSocket connectors receive real-time order book updates from exchanges
 2. **Message Broker (Redis Streams)**: Decouples ingestion from processing, provides durability
-3. **WebSocket/REST API (FastAPI)**: Streams raw tick updates to connected clients
-4. **Frontend (Next.js)**: Visualizes live ticks and latency metrics
+3. **Transform Layer (Python)**: Normalizes different market structures (binary, ranged) into comparable formats
+4. **Spread Calculator (Python)**: Computes arbitrage opportunities between platform pairs
+5. **Storage (TimescaleDB)**: Time-series database for historical analysis and backtesting
+6. **WebSocket API (FastAPI)**: Pushes real-time updates to connected clients
+7. **Frontend (Next.js)**: Visualizes live spreads, alerts, and latency metrics
 
 ## Technology Stack
 
 | Layer       | Technology                    | Purpose                          |
 |-------------|-------------------------------|----------------------------------|
 | Ingestion   | Go 1.21, gorilla/websocket    | Low-latency data collection      |
-| Analysis    | Python 3.11, FastAPI          | Tick streaming APIs              |
+| Analysis    | Python 3.11, FastAPI, Pandas  | Business logic and transforms    |
 | Frontend    | Next.js 14, TypeScript        | Real-time visualization          |
 | Storage     | Redis Streams, TimescaleDB    | Message queue and time-series    |
 | Metrics     | Prometheus, Grafana           | Observability and monitoring     |
@@ -109,14 +121,28 @@ METRICS_PORT=9090
 
 See [REAL_DATA_SETUP.md](REAL_DATA_SETUP.md) for detailed instructions on:
 - Generating API keys from Kalshi
-- Reviewing ingestion behavior
+- Configuring market pairs
 - Finding market tickers and token IDs
 
-If you do not have Kalshi credentials configured, the ingestor will skip the Kalshi connector and still run Polymarket ingestion.
+### 4. Configure Market Pairs
 
-### 4. Configure Market Subscriptions
+Edit `config/market_pairs.json` to specify which markets to track:
 
-No local market-pair configuration file is required. The ingestor discovers active markets from Kalshi and Polymarket APIs at runtime and subscribes automatically.
+```json
+{
+  "pairs": [
+    {
+      "id": "fed-rate-march-2025",
+      "description": "Federal Reserve interest rate decision March 2025",
+      "kalshi_tickers": ["FED-25MAR-T4.75", "FED-25MAR-T5.00"],
+      "kalshi_transform": "sum",
+      "poly_token_id": "0x1234567890abcdef1234567890abcdef12345678",
+      "poly_transform": "identity",
+      "alert_threshold": 0.05
+    }
+  ]
+}
+```
 
 ### 5. Start Services
 
@@ -135,7 +161,7 @@ docker-compose logs -f
 
 # Test API endpoints
 curl http://localhost:8000/health
-curl http://localhost:8000/api/v1/ticks
+curl http://localhost:8000/api/v1/spreads
 
 # Access frontend
 open http://localhost:3000
@@ -151,11 +177,6 @@ open http://localhost:3000
 | Metrics    | http://localhost:9090/metrics     | Prometheus metrics (ingestor)|
 | Metrics    | http://localhost:9091/metrics     | Prometheus metrics (analysis)|
 | Grafana    | http://localhost:3001             | Metrics visualization        |
-
-Key API endpoints:
-- `GET /api/v1/ticks` - Recent raw ticks from Redis
-- `GET /api/v1/subscriptions` - Compatibility endpoint (returns auto-discovery mode)
-- `GET /ws/spreads` - WebSocket raw tick stream (kept for frontend compatibility)
 
 ## Project Structure
 
@@ -177,7 +198,7 @@ echoarb/
 │       ├── api/           # FastAPI routes and WebSocket handlers
 │       ├── database/      # SQLAlchemy models
 │       ├── models/        # Pydantic models
-│       └── services/      # Redis stream consumer and utilities
+│       └── services/      # Business logic (transform, spread calc)
 ├── frontend/              # Next.js frontend
 │   └── src/
 │       ├── app/           # Next.js 14 app directory
@@ -185,6 +206,7 @@ echoarb/
 │       ├── hooks/         # Custom hooks (WebSocket, API)
 │       └── lib/           # Utilities and API client
 └── config/                # Configuration files
+    ├── market_pairs.json  # Market configuration
     └── prometheus.yml     # Prometheus scrape config
 ```
 
@@ -194,13 +216,19 @@ echoarb/
 
 All services are configured via environment variables in `.env`. See `.env.example` for complete reference.
 
-### Market Discovery
+### Market Pairs Configuration
 
-The ingestor discovers active markets directly from Kalshi and Polymarket APIs at startup.
+The `config/market_pairs.json` file defines which markets to track and how to transform prices:
+
+- **kalshi_tickers**: Array of Kalshi market tickers (use array with "sum" transform for ranged contracts)
+- **kalshi_transform**: How to combine multiple tickers ("sum", "identity", "inverse")
+- **poly_token_id**: Polymarket token ID (found in browser DevTools Network tab)
+- **poly_transform**: Usually "identity" for direct probability mapping
+- **alert_threshold**: Minimum spread percentage to trigger alerts (e.g., 0.05 = 5%)
 
 ### Transform Strategies
 
-Transform strategies are currently not applied in raw tick mode, but remain in the config for future phases.
+The transform layer normalizes different market structures:
 
 - **identity**: Use price as-is (1:1 mapping)
 - **sum**: Add multiple Kalshi contracts (e.g., "4.75-5.00%" + ">5.00%" = ">4.75%")
@@ -219,7 +247,7 @@ Latency breakdown:
 - Network (exchange to server): 20-100ms
 - Parsing and validation: 2-5ms
 - Redis Stream publish: 0.5-1ms
-- Stream read and broadcast: 5-10ms
+- Transform and calculation: 5-10ms
 - WebSocket push to frontend: 10-50ms
 
 ## Monitoring
@@ -347,19 +375,20 @@ Common issues:
 
 **No data flowing through system**
 - Check ingestor logs: `docker-compose logs -f ingestor`
-- Verify external market discovery endpoints are reachable from your host/network
+- Verify market tickers in `config/market_pairs.json` are active
 - Check Redis stream length: `docker-compose exec redis redis-cli XLEN market_ticks`
 - Verify consumer is running: `docker-compose logs -f analysis | grep consumer`
 
 **Frontend not showing data**
 - Check WebSocket connection in browser console
 - Verify analysis service is running: `curl http://localhost:8000/health`
-- Check for ticks: `curl http://localhost:8000/api/v1/ticks`
-- Verify ingestion is in auto-discovery mode and connectors successfully subscribe
+- Check for spreads: `curl http://localhost:8000/api/v1/spreads`
+- Verify market pairs are configured correctly
 
 ## Documentation
 
 - [REAL_DATA_SETUP.md](REAL_DATA_SETUP.md): Complete setup guide for real market data
+- [MANIFOLD_REMOVED.md](MANIFOLD_REMOVED.md): Documentation of Manifold Markets removal
 - [API Documentation](http://localhost:8000/docs): OpenAPI specification (when services running)
 
 ## License

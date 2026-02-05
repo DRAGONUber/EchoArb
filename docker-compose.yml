@@ -59,6 +59,7 @@ services:
       - "9090:9090"  # Prometheus metrics
     volumes:
       - ./keys:/app/keys:ro
+      - ./config:/app/config:ro
     depends_on:
       redis:
         condition: service_healthy
@@ -89,6 +90,8 @@ services:
     ports:
       - "8000:8000"  # FastAPI
       - "9091:9091"  # Prometheus metrics
+    volumes:
+      - ./config:/app/config:ro
     depends_on:
       redis:
         condition: service_healthy

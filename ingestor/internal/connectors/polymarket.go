@@ -116,14 +116,14 @@ func (p *PolymarketConnector) connect(ctx context.Context) error {
 
 // subscribe subscribes to market updates
 func (p *PolymarketConnector) subscribe(conn *websocket.Conn) error {
-	allTokens, err := p.fetchActiveMarkets()
+	tokenIDs, err := p.fetchActiveMarkets()
 	if err != nil {
 		return fmt.Errorf("failed to fetch Polymarket markets via Gamma API: %w", err)
 	}
-	tokenIDs := allTokens
 	if len(tokenIDs) == 0 {
 		return fmt.Errorf("no Polymarket markets available for subscription")
 	}
+
 	p.logger.Infof("Subscribing to %d Polymarket markets", len(tokenIDs))
 
 	for _, tokenID := range tokenIDs {

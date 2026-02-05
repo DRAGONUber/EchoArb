@@ -1,10 +1,11 @@
 # app/api/websocket.py
 """
-WebSocket handlers for real-time updates
+WebSocket handlers for real-time spread updates
 """
 import asyncio
 import logging
-from datetime import datetime, timezone
+import json
+from datetime import datetime
 from typing import Set
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -96,16 +97,15 @@ manager = ConnectionManager()
 @router.websocket("/ws/spreads")
 async def websocket_spreads(websocket: WebSocket):
     """
-    WebSocket endpoint for raw tick updates (kept at /ws/spreads for frontend compatibility).
+    WebSocket endpoint for real-time spread updates
+
+    Clients receive spread updates whenever prices change on any platform.
 
     Message format:
     {
-        "type": "tick",
-        "source": "KALSHI" | "POLYMARKET",
-        "contract_id": "ticker_or_token_id",
-        "price": 0.52,
-        "timestamp": "ISO-8601 string",
-        "latency_ms": 100
+        "type": "spread_update",
+        "timestamp": "2025-01-26T10:30:00Z",
+        "spreads": [...]
     }
     """
     from app.main import get_app_state
@@ -116,63 +116,74 @@ async def websocket_spreads(websocket: WebSocket):
         return
 
     state = get_app_state()
-    last_id = "$"
 
     try:
-        while True:
-            if not state.redis_client:
-                await asyncio.sleep(settings.ws_heartbeat_interval)
-                await websocket.send_json({
-                    "type": "heartbeat",
-                    "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-                })
-                continue
+        # Send initial spreads
+        if state.spread_calculator and state.market_pairs:
+            initial_spreads = state.spread_calculator.calculate_all_spreads(
+                state.market_pairs
+            )
+            await websocket.send_json({
+                "type": "initial_spreads",
+                "timestamp": datetime.now().isoformat(),
+                "spreads": [s.model_dump(mode='json') for s in initial_spreads]
+            })
+
+        # Subscribe to Redis Pub/Sub for real-time updates
+        if state.redis_client:
+            pubsub = state.redis_client.pubsub()
+            await pubsub.psubscribe("tick:*")
 
             try:
-                messages = await state.redis_client.xread(
-                    {settings.redis.stream_name: last_id},
-                    count=1,
-                    block=settings.consumer_block_ms
-                )
-                if not messages:
-                    continue
-
-                for _, message_list in messages:
-                    for message_id, message_data in message_list:
+                # Listen for tick updates
+                async for message in pubsub.listen():
+                    if message["type"] == "pmessage":
                         try:
-                            data_bytes = message_data.get(b"data") or message_data.get("data")
-                            if not data_bytes:
-                                continue
-                            if isinstance(data_bytes, str):
-                                data_bytes = data_bytes.encode()
-                            tick_data = msgpack.unpackb(data_bytes, raw=False)
+                            # Decode tick
+                            tick_data = msgpack.unpackb(message["data"], raw=False)
                             tick = Tick(**tick_data)
-                            tick.ts_emit = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
 
-                            timestamp = tick.source_time.replace(
-                                tzinfo=timezone.utc
-                            ).isoformat().replace("+00:00", "Z")
+                            # Add emit timestamp
+                            tick.ts_emit = int(datetime.now().timestamp() * 1000)
 
+                            # Calculate updated spreads
+                            spreads = state.spread_calculator.calculate_all_spreads(
+                                state.market_pairs
+                            )
+
+                            # Send to client
                             await websocket.send_json({
-                                "type": "tick",
-                                "source": tick.source,
-                                "contract_id": tick.contract_id,
-                                "price": tick.price,
-                                "timestamp": timestamp,
-                                "latency_ms": tick.latency_emit_ms or tick.latency_ingest_ms
+                                "type": "spread_update",
+                                "timestamp": datetime.now().isoformat(),
+                                "trigger_tick": {
+                                    "source": tick.source,
+                                    "contract_id": tick.contract_id,
+                                    "price": tick.price,
+                                    "latency_ms": tick.latency_emit_ms
+                                },
+                                "spreads": [s.model_dump(mode='json') for s in spreads]
                             })
-                            last_id = message_id.decode() if isinstance(message_id, bytes) else message_id
 
                         except (ConnectionClosed, ClientDisconnected):
+                            # Re-raise disconnects to be handled by the outer block
                             raise
                         except Exception as e:
                             logger.error(f"Error processing tick: {e}", exc_info=True)
+                            # Don't disconnect on processing errors
 
-            except (ConnectionClosed, ClientDisconnected):
-                raise
-            except Exception as e:
-                logger.error(f"Error reading Redis stream: {e}", exc_info=True)
-                await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                logger.info("WebSocket task cancelled")
+            finally:
+                await pubsub.unsubscribe()
+        else:
+            # No Redis connection, just keep connection alive with heartbeat
+            logger.warning("Redis not connected, WebSocket will only send heartbeats")
+            while True:
+                await asyncio.sleep(settings.ws_heartbeat_interval)
+                await websocket.send_json({
+                    "type": "heartbeat",
+                    "timestamp": datetime.now().isoformat()
+                })
 
     except (WebSocketDisconnect, ConnectionClosed, ClientDisconnected):
         logger.info("Client disconnected normally")

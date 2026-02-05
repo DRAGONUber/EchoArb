@@ -83,6 +83,7 @@ async def seed_sample_data():
                 (SourceEnum.KALSHI, "FED-25MAR-T4.75"),
                 (SourceEnum.KALSHI, "FED-25MAR-T5.00"),
                 (SourceEnum.POLYMARKET, "0x1234567890abcdef"),
+                (SourceEnum.MANIFOLD, "will-the-fed-cut-rates"),
             ]
 
             tick_count = 0
@@ -118,15 +119,24 @@ async def seed_sample_data():
 
                 kalshi_prob = 0.55 + random.uniform(-0.1, 0.1)
                 poly_prob = 0.58 + random.uniform(-0.1, 0.1)
+                manifold_prob = 0.52 + random.uniform(-0.1, 0.1)
+
                 spread = SpreadModel(
                     timestamp=spread_time,
                     pair_id="fed-rate-march-2025",
                     description="Federal Reserve interest rate decision March 2025",
                     kalshi_prob=kalshi_prob,
                     poly_prob=poly_prob,
+                    manifold_prob=manifold_prob,
                     kalshi_poly_spread=abs(kalshi_prob - poly_prob),
-                    max_spread=abs(kalshi_prob - poly_prob),
-                    max_spread_pair="KALSHI-POLY",
+                    kalshi_manifold_spread=abs(kalshi_prob - manifold_prob),
+                    poly_manifold_spread=abs(poly_prob - manifold_prob),
+                    max_spread=max(
+                        abs(kalshi_prob - poly_prob),
+                        abs(kalshi_prob - manifold_prob),
+                        abs(poly_prob - manifold_prob)
+                    ),
+                    max_spread_pair="KALSHI-POLY" if abs(kalshi_prob - poly_prob) > abs(poly_prob - manifold_prob) else "POLY-MANIFOLD",
                     data_completeness=1.0
                 )
                 session.add(spread)
@@ -145,6 +155,7 @@ async def seed_sample_data():
                 spread_data={
                     "kalshi_prob": 0.60,
                     "poly_prob": 0.52,
+                    "manifold_prob": 0.55,
                     "max_spread": 0.08
                 }
             )

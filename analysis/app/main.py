@@ -128,10 +128,13 @@ async def lifespan(app: FastAPI):
         await app_state.redis_client.ping()
         logger.info(f"Connected to Redis at {settings.redis.host}:{settings.redis.port}")
 
-        # Raw tick mode: no spread calculator or market pair matching
-        app_state.spread_calculator = None
-        app_state.market_pairs = []
-        logger.info("Running in raw tick mode (spread calculator disabled)")
+        # Initialize spread calculator
+        app_state.spread_calculator = SpreadCalculator()
+        logger.info("Initialized spread calculator")
+
+        # Load market pairs configuration
+        app_state.market_pairs = load_market_pairs()
+        logger.info(f"Loaded {len(app_state.market_pairs)} market pairs")
 
         # Start Redis Stream consumer
         app_state.consumer = RedisStreamConsumer(
