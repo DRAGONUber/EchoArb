@@ -26,8 +26,8 @@ type Config struct {
 	KalshiAPIKey        string `json:"kalshi_api_key"`
 	KalshiPrivateKeyPEM string `json:"kalshi_private_key_pem"` // Path to PEM file
 
-	// Market pairs
-	Pairs []MarketPair `json:"pairs"`
+	// Market subscriptions
+	Subscriptions []MarketSubscription `json:"subscriptions"`
 
 	// Connection settings
 	Reconnect ReconnectConfig `json:"reconnect"`
@@ -48,12 +48,11 @@ type ReconnectConfig struct {
 	MaxRetries      int           `json:"max_retries"` // 0 = infinite
 }
 
-type MarketPair struct {
+type MarketSubscription struct {
 	ID          string           `json:"id"`
 	Description string           `json:"description"`
 	Kalshi      *KalshiMarket    `json:"kalshi,omitempty"`
 	Polymarket  *PolymarketMarket `json:"polymarket,omitempty"`
-	Manifold    *ManifoldMarket   `json:"manifold,omitempty"`
 }
 
 type KalshiMarket struct {
@@ -62,10 +61,6 @@ type KalshiMarket struct {
 
 type PolymarketMarket struct {
 	TokenID string `json:"token_id"`
-}
-
-type ManifoldMarket struct {
-	Slug string `json:"slug"`
 }
 
 // Load reads configuration from file and environment variables
@@ -84,7 +79,7 @@ func Load() (*Config, error) {
 			MinIdleConns: getEnvInt("REDIS_MIN_IDLE_CONNS", 5),
 		},
 		KalshiWSURL:    getEnv("KALSHI_WS_URL", "wss://api.elections.kalshi.com/trade-api/ws/v2"),
-		PolyWSURL:      getEnv("POLY_WS_URL", "wss://ws-subscriptions-clob.polymarket.com/ws/market"),
+		PolyWSURL:      getEnv("POLY_WS_URL", "wss://ws-subscriptions-clob.polymarket.com/ws"),
 		
 		// Kalshi auth
 		KalshiAPIKey:        getEnv("KALSHI_API_KEY", ""),
@@ -97,10 +92,10 @@ func Load() (*Config, error) {
 		},
 	}
 
-	// Load market pairs from JSON file if provided
+	// Load market subscriptions from JSON file if provided
 	configPath := getEnv("CONFIG_PATH", "./config/market_pairs.json")
-	if err := loadMarketPairs(configPath, cfg); err != nil {
-		return nil, fmt.Errorf("failed to load market pairs: %w", err)
+	if err := loadSubscriptions(configPath, cfg); err != nil {
+		return nil, fmt.Errorf("failed to load market subscriptions: %w", err)
 	}
 
 	// Validate configuration
@@ -111,26 +106,26 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-func loadMarketPairs(path string, cfg *Config) error {
+func loadSubscriptions(path string, cfg *Config) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		// Config file is optional in development
 		if os.IsNotExist(err) && cfg.Environment == "development" {
-			cfg.Pairs = []MarketPair{} // Empty pairs for testing
+			cfg.Subscriptions = []MarketSubscription{} // Empty subscriptions for testing
 			return nil
 		}
 		return err
 	}
 
-	var pairsConfig struct {
-		Pairs []MarketPair `json:"pairs"`
+	var subscriptionsConfig struct {
+		Subscriptions []MarketSubscription `json:"subscriptions"`
 	}
 
-	if err := json.Unmarshal(data, &pairsConfig); err != nil {
+	if err := json.Unmarshal(data, &subscriptionsConfig); err != nil {
 		return err
 	}
 
-	cfg.Pairs = pairsConfig.Pairs
+	cfg.Subscriptions = subscriptionsConfig.Subscriptions
 	return nil
 }
 

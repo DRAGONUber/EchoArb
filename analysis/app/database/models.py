@@ -17,7 +17,6 @@ class SourceEnum(str, enum.Enum):
 
     KALSHI = "KALSHI"
     POLYMARKET = "POLYMARKET"
-    MANIFOLD = "MANIFOLD"
 
 
 class TickModel(Base):
@@ -78,12 +77,9 @@ class SpreadModel(Base):
     # Probabilities
     kalshi_prob = Column(Float, nullable=True)
     poly_prob = Column(Float, nullable=True)
-    manifold_prob = Column(Float, nullable=True)
 
     # Spreads
     kalshi_poly_spread = Column(Float, nullable=True)
-    kalshi_manifold_spread = Column(Float, nullable=True)
-    poly_manifold_spread = Column(Float, nullable=True)
 
     # Maximum spread
     max_spread = Column(Float, nullable=False)

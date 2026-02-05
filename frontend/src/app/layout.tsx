@@ -4,7 +4,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'EchoArb - Real-time Arbitrage Scanner',
-  description: 'Prediction market arbitrage opportunities across Kalshi, Polymarket, and Manifold Markets',
+  description: 'Real-time prediction market ticks across Kalshi and Polymarket',
 }
 
 export default function RootLayout({

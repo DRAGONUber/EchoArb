@@ -25,10 +25,6 @@ class MarketPairConfig:
     poly_token_id: Optional[str] = None
     poly_transform: TransformStrategy = TransformStrategy.IDENTITY
     
-    # Manifold configuration
-    manifold_slug: Optional[str] = None
-    manifold_transform: TransformStrategy = TransformStrategy.IDENTITY
-    
     # Alert configuration
     alert_threshold: float = 0.05  # Alert when spread > 5%
 
@@ -42,13 +38,8 @@ class SpreadResult:
     # Probabilities
     kalshi_prob: Optional[float]
     poly_prob: Optional[float]
-    manifold_prob: Optional[float]
-    
     # Spread calculations
     kalshi_poly_spread: Optional[float]  # |kalshi - poly|
-    kalshi_manifold_spread: Optional[float]
-    poly_manifold_spread: Optional[float]
-    
     # Maximum spread across all pairs
     max_spread: float
     max_spread_pair: str  # e.g., "KALSHI-POLY"
@@ -82,7 +73,7 @@ class SpreadCalculator:
         Update cached price for a contract
         
         Args:
-            source: "KALSHI", "POLYMARKET", or "MANIFOLD"
+            source: "KALSHI" or "POLYMARKET"
             contract_id: Contract/ticker/slug identifier
             price: Probability (0.0 - 1.0)
         """
@@ -127,10 +118,7 @@ class SpreadCalculator:
             description=pair_config.description,
             kalshi_prob=kalshi_prob,
             poly_prob=poly_prob,
-            manifold_prob=None,  # Not used anymore
             kalshi_poly_spread=kalshi_poly_spread,
-            kalshi_manifold_spread=None,  # Not used anymore
-            poly_manifold_spread=None,  # Not used anymore
             max_spread=max_spread,
             max_spread_pair=max_spread_pair,
             timestamp=datetime.now(),
@@ -180,24 +168,6 @@ class SpreadCalculator:
         try:
             return self.transformer.transform(
                 config.poly_transform,
-                [price]
-            )
-        except ValueError:
-            return None
-    
-    def _get_manifold_probability(self, config: MarketPairConfig) -> Optional[float]:
-        """Get normalized Manifold probability"""
-        if not config.manifold_slug:
-            return None
-        
-        if config.manifold_slug not in self.price_cache["MANIFOLD"]:
-            return None
-        
-        price = self.price_cache["MANIFOLD"][config.manifold_slug]
-        
-        try:
-            return self.transformer.transform(
-                config.manifold_transform,
                 [price]
             )
         except ValueError:
@@ -256,7 +226,6 @@ if __name__ == "__main__":
     calc.update_price("KALSHI", "FED-25MAR-T4.75", 0.35)
     calc.update_price("KALSHI", "FED-25MAR-T5.00", 0.20)
     calc.update_price("POLYMARKET", "0x123abc", 0.58)
-    calc.update_price("MANIFOLD", "fed-rate-march", 0.52)
     
     # Create config
     config = MarketPairConfig(
@@ -276,6 +245,5 @@ if __name__ == "__main__":
         print(f"Spread Result for {result.pair_id}:")
         print(f"  Kalshi: {result.kalshi_prob:.2%}")
         print(f"  Polymarket: {result.poly_prob:.2%}")
-        print(f"  Manifold: {result.manifold_prob:.2%}")
         print(f"  Max Spread: {result.max_spread:.2%} ({result.max_spread_pair})")
         print(f"  Data Completeness: {result.data_completeness:.0%}")
