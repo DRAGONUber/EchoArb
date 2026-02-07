@@ -68,13 +68,45 @@ async def get_ticks(
             continue
 
         timestamp = tick.source_time.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
-        ticks.append({
+        tick_data = {
+            # Core fields
             "source": tick.source,
             "contract_id": tick.contract_id,
             "price": tick.price,
             "timestamp": timestamp,
-            "latency_ms": tick.latency_ingest_ms
-        })
+            "latency_ms": tick.latency_ingest_ms,
+
+            # Price fields
+            "yes_bid": tick.yes_bid,
+            "yes_ask": tick.yes_ask,
+            "no_bid": tick.no_bid,
+            "no_ask": tick.no_ask,
+            "last_price": tick.last_price,
+
+            # Size/Depth fields
+            "bid_size": tick.bid_size,
+            "ask_size": tick.ask_size,
+            "trade_size": tick.trade_size,
+
+            # Volume fields
+            "volume": tick.volume,
+            "open_interest": tick.open_interest,
+            "dollar_volume": tick.dollar_volume,
+            "dollar_open_interest": tick.dollar_open_interest,
+
+            # Trade info
+            "trade_side": tick.trade_side,
+            "fee_rate_bps": tick.fee_rate_bps,
+
+            # Market metadata
+            "market_id": tick.market_id,
+            "market_name": tick.market_name,
+            "event_type": tick.event_type,
+        }
+        # Calculate spread if bid/ask available
+        if tick.yes_bid and tick.yes_ask:
+            tick_data["spread"] = round(tick.yes_ask - tick.yes_bid, 4)
+        ticks.append(tick_data)
 
     return ticks
 

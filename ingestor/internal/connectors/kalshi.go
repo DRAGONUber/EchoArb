@@ -16,13 +16,14 @@ import (
 )
 
 type KalshiConnector struct {
-	config     *config.Config
-	logger     *zap.SugaredLogger
-	conn       *websocket.Conn
-	auth       *auth.KalshiAuth
-	mu         sync.RWMutex
-	lastPrices sync.Map
-	msgChan    chan<- models.Tick
+	config      *config.Config
+	logger      *zap.SugaredLogger
+	conn        *websocket.Conn
+	auth        *auth.KalshiAuth
+	mu          sync.RWMutex
+	lastPrices  sync.Map
+	marketNames sync.Map // ticker -> title cache
+	msgChan     chan<- models.Tick
 }
 
 func NewKalshiConnector(cfg *config.Config, logger *zap.SugaredLogger, msgChan chan<- models.Tick) *KalshiConnector {
@@ -86,6 +87,7 @@ func (k *KalshiConnector) connect() error {
 type KalshiMarketResponse struct {
 	Markets []struct {
 		Ticker string `json:"ticker"`
+		Title  string `json:"title"`
 	} `json:"markets"`
 	Cursor string `json:"cursor"`
 }
@@ -113,6 +115,10 @@ func (k *KalshiConnector) fetchActiveMarkets() ([]string, error) {
 	var tickers []string
 	for _, m := range result.Markets {
 		tickers = append(tickers, m.Ticker)
+		// Cache market name for later use
+		if m.Title != "" {
+			k.marketNames.Store(m.Ticker, m.Title)
+		}
 	}
 
 	if len(tickers) == 0 {
@@ -184,41 +190,76 @@ func (k *KalshiConnector) processMessage(data []byte) {
 		return
 	}
 
+	// Extract ALL available Kalshi ticker fields
+	// Prices (in cents 1-99)
 	yesBid, _ := msgData["yes_bid"].(float64)
 	yesAsk, _ := msgData["yes_ask"].(float64)
+	lastPrice, _ := msgData["price"].(float64)
+
+	// Volume & Interest
+	volume, _ := msgData["volume"].(float64)
+	openInterest, _ := msgData["open_interest"].(float64)
+	dollarVolume, _ := msgData["dollar_volume"].(float64)
+	dollarOpenInterest, _ := msgData["dollar_open_interest"].(float64)
+
+	// Market ID
+	marketID, _ := msgData["market_id"].(string)
+
+	// Timestamp
 	sourceTS, _ := msgData["ts"].(float64)
 
-	// Calculate Mid Price (prices are in cents 1-99, convert to 0-1)
+	// Calculate Mid Price (convert from cents to 0-1)
 	var price float64
 	if yesBid > 0 && yesAsk > 0 {
 		price = (yesBid + yesAsk) / 200.0
+	} else if lastPrice > 0 {
+		price = lastPrice / 100.0
 	} else if yesBid > 0 {
 		price = yesBid / 100.0
 	} else if yesAsk > 0 {
 		price = yesAsk / 100.0
 	} else {
-		// Fall back to price field if available
-		if p, ok := msgData["price"].(float64); ok && p > 0 {
-			price = p / 100.0
-		} else {
-			return
-		}
+		return
 	}
 
 	// Deduplication check
-	if lastPrice, ok := k.lastPrices.Load(ticker); ok {
-		if lastPrice.(float64) == price {
+	if cached, ok := k.lastPrices.Load(ticker); ok {
+		if cached.(float64) == price {
 			return
 		}
 	}
 	k.lastPrices.Store(ticker, price)
 
-	// Send to Channel
+	// Get cached market name
+	var marketName string
+	if name, ok := k.marketNames.Load(ticker); ok {
+		marketName = name.(string)
+	}
+
+	// Send to Channel with ALL fields
 	k.msgChan <- models.Tick{
 		Source:          "KALSHI",
 		ContractID:      ticker,
 		Price:           price,
 		TimestampSource: int64(sourceTS * 1000),
 		TimestampIngest: time.Now().UnixMilli(),
+
+		// Prices (converted to 0-1)
+		YesBid:    yesBid / 100.0,
+		YesAsk:    yesAsk / 100.0,
+		NoBid:     (100 - yesAsk) / 100.0, // Derived: no_bid = 1 - yes_ask
+		NoAsk:     (100 - yesBid) / 100.0, // Derived: no_ask = 1 - yes_bid
+		LastPrice: lastPrice / 100.0,
+
+		// Volume
+		Volume:        int64(volume),
+		OpenInterest:  int64(openInterest),
+		DollarVolume:  int64(dollarVolume),
+		DollarOpenInt: int64(dollarOpenInterest),
+
+		// Metadata
+		MarketID:   marketID,
+		MarketName: marketName,
+		EventType:  "ticker",
 	}
 }

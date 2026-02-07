@@ -15,12 +15,13 @@ import (
 )
 
 type PolymarketConnector struct {
-	config     *config.Config
-	logger     *zap.SugaredLogger
-	conn       *websocket.Conn
-	mu         sync.RWMutex
-	lastPrices sync.Map
-	msgChan    chan<- models.Tick
+	config      *config.Config
+	logger      *zap.SugaredLogger
+	conn        *websocket.Conn
+	mu          sync.RWMutex
+	lastPrices  sync.Map
+	marketNames sync.Map // tokenID -> question cache
+	msgChan     chan<- models.Tick
 }
 
 func NewPolymarketConnector(cfg *config.Config, logger *zap.SugaredLogger, msgChan chan<- models.Tick) *PolymarketConnector {
@@ -62,7 +63,10 @@ func (p *PolymarketConnector) connect() error {
 }
 
 type PolymarketMarket struct {
-	ClobTokenIDs string `json:"clobTokenIds"`
+	ClobTokenIDs string   `json:"clobTokenIds"`
+	Question     string   `json:"question"`
+	Outcomes     string   `json:"outcomes"` // JSON array as string
+	Tokens       []string `json:"-"`        // Parsed token IDs
 }
 
 func (p *PolymarketConnector) fetchActiveMarkets() ([]string, error) {
@@ -90,6 +94,26 @@ func (p *PolymarketConnector) fetchActiveMarkets() ([]string, error) {
 		if m.ClobTokenIDs != "" {
 			if err := json.Unmarshal([]byte(m.ClobTokenIDs), &ids); err == nil {
 				allTokenIDs = append(allTokenIDs, ids...)
+
+				// Parse outcomes to create descriptive names
+				var outcomes []string
+				if m.Outcomes != "" {
+					json.Unmarshal([]byte(m.Outcomes), &outcomes)
+				}
+
+				// Cache market name for each token
+				for i, tokenID := range ids {
+					var name string
+					if m.Question != "" {
+						name = m.Question
+						if i < len(outcomes) {
+							name = fmt.Sprintf("%s [%s]", m.Question, outcomes[i])
+						}
+					}
+					if name != "" {
+						p.marketNames.Store(tokenID, name)
+					}
+				}
 			}
 		}
 	}
@@ -167,52 +191,89 @@ func (p *PolymarketConnector) processMessage(data []byte) {
 			continue
 		}
 
-		var price float64
+		var price, bestBid, bestAsk, tradeSize, bidSize, askSize, feeRateBps float64
+		var tradeSide, eventType, marketID string
 
-		// Check for price field directly (price_change events)
+		// Get event type
+		eventType, _ = msg["event_type"].(string)
+
+		// Get market/condition ID
+		marketID, _ = msg["market"].(string)
+
+		// Check for price field directly (price_change or last_trade_price events)
 		if priceStr, ok := msg["price"].(string); ok {
 			fmt.Sscanf(priceStr, "%f", &price)
 		} else if priceFloat, ok := msg["price"].(float64); ok {
 			price = priceFloat
 		}
 
-		// If no direct price, calculate mid from orderbook
-		if price == 0 {
+		// Check for trade size
+		if sizeStr, ok := msg["size"].(string); ok {
+			fmt.Sscanf(sizeStr, "%f", &tradeSize)
+		}
+
+		// Check for trade side
+		tradeSide, _ = msg["side"].(string)
+
+		// Check for fee rate (last_trade_price events)
+		if feeStr, ok := msg["fee_rate_bps"].(string); ok {
+			fmt.Sscanf(feeStr, "%f", &feeRateBps)
+		}
+
+		// Check for best_bid/best_ask (from price_change events)
+		if bbStr, ok := msg["best_bid"].(string); ok {
+			fmt.Sscanf(bbStr, "%f", &bestBid)
+		}
+		if baStr, ok := msg["best_ask"].(string); ok {
+			fmt.Sscanf(baStr, "%f", &bestAsk)
+		}
+
+		// If no direct bid/ask, calculate from orderbook
+		if bestBid == 0 || bestAsk == 0 {
 			bids, _ := msg["bids"].([]interface{})
 			asks, _ := msg["asks"].([]interface{})
 
-			var bestBid, bestAsk float64
-
-			// Find highest bid
+			// Find highest bid and its size
 			for _, b := range bids {
 				if bid, ok := b.(map[string]interface{}); ok {
 					if priceStr, ok := bid["price"].(string); ok {
-						var p float64
-						fmt.Sscanf(priceStr, "%f", &p)
-						if p > bestBid {
-							bestBid = p
+						var bidPrice float64
+						fmt.Sscanf(priceStr, "%f", &bidPrice)
+						if bidPrice > bestBid {
+							bestBid = bidPrice
+							if sizeStr, ok := bid["size"].(string); ok {
+								fmt.Sscanf(sizeStr, "%f", &bidSize)
+							}
 						}
 					}
 				}
 			}
 
-			// Find lowest ask
-			bestAsk = 999.0
-			for _, a := range asks {
-				if ask, ok := a.(map[string]interface{}); ok {
-					if priceStr, ok := ask["price"].(string); ok {
-						var p float64
-						fmt.Sscanf(priceStr, "%f", &p)
-						if p < bestAsk {
-							bestAsk = p
+			// Find lowest ask and its size
+			if bestAsk == 0 {
+				bestAsk = 999.0
+				for _, a := range asks {
+					if ask, ok := a.(map[string]interface{}); ok {
+						if priceStr, ok := ask["price"].(string); ok {
+							var askPrice float64
+							fmt.Sscanf(priceStr, "%f", &askPrice)
+							if askPrice < bestAsk {
+								bestAsk = askPrice
+								if sizeStr, ok := ask["size"].(string); ok {
+									fmt.Sscanf(sizeStr, "%f", &askSize)
+								}
+							}
 						}
 					}
 				}
+				if bestAsk == 999.0 {
+					bestAsk = 0
+				}
 			}
-			if bestAsk == 999.0 {
-				bestAsk = 0
-			}
+		}
 
+		// Calculate mid price if not directly available
+		if price == 0 {
 			if bestBid > 0 && bestAsk > 0 {
 				price = (bestBid + bestAsk) / 2
 			} else if bestBid > 0 {
@@ -242,13 +303,40 @@ func (p *PolymarketConnector) processMessage(data []byte) {
 		}
 		p.lastPrices.Store(assetID, price)
 
-		// Send to Channel
+		// Get cached market name
+		var marketName string
+		if name, ok := p.marketNames.Load(assetID); ok {
+			marketName = name.(string)
+		}
+
+		// Send to Channel with ALL fields
 		p.msgChan <- models.Tick{
 			Source:          "POLYMARKET",
 			ContractID:      assetID,
 			Price:           price,
 			TimestampSource: sourceTS,
 			TimestampIngest: time.Now().UnixMilli(),
+
+			// Prices
+			YesBid:    bestBid,
+			YesAsk:    bestAsk,
+			NoBid:     1 - bestAsk, // Derived
+			NoAsk:     1 - bestBid, // Derived
+			LastPrice: price,
+
+			// Sizes
+			BidSize:   bidSize,
+			AskSize:   askSize,
+			TradeSize: tradeSize,
+
+			// Trade info
+			TradeSide:  tradeSide,
+			FeeRateBps: feeRateBps,
+
+			// Metadata
+			MarketID:   marketID,
+			MarketName: marketName,
+			EventType:  eventType,
 		}
 	}
 }

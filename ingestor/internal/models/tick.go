@@ -13,6 +13,33 @@ type Tick struct {
 	Price           float64 `json:"price" msgpack:"price"`
 	TimestampSource int64   `json:"ts_source" msgpack:"ts_source"` // Exchange timestamp (ms)
 	TimestampIngest int64   `json:"ts_ingest" msgpack:"ts_ingest"` // Our receive time (ms)
+
+	// Price fields
+	YesBid    float64 `json:"yes_bid,omitempty" msgpack:"yes_bid,omitempty"`       // Best bid for YES (0-1)
+	YesAsk    float64 `json:"yes_ask,omitempty" msgpack:"yes_ask,omitempty"`       // Best ask for YES (0-1)
+	NoBid     float64 `json:"no_bid,omitempty" msgpack:"no_bid,omitempty"`         // Best bid for NO (0-1)
+	NoAsk     float64 `json:"no_ask,omitempty" msgpack:"no_ask,omitempty"`         // Best ask for NO (0-1)
+	LastPrice float64 `json:"last_price,omitempty" msgpack:"last_price,omitempty"` // Last trade price (0-1)
+
+	// Size/Depth fields
+	BidSize   float64 `json:"bid_size,omitempty" msgpack:"bid_size,omitempty"`     // Size at best bid
+	AskSize   float64 `json:"ask_size,omitempty" msgpack:"ask_size,omitempty"`     // Size at best ask
+	TradeSize float64 `json:"trade_size,omitempty" msgpack:"trade_size,omitempty"` // Size of last trade
+
+	// Volume fields
+	Volume           int64 `json:"volume,omitempty" msgpack:"volume,omitempty"`                       // Contracts traded
+	OpenInterest     int64 `json:"open_interest,omitempty" msgpack:"open_interest,omitempty"`         // Active contracts
+	DollarVolume     int64 `json:"dollar_volume,omitempty" msgpack:"dollar_volume,omitempty"`         // Dollars traded (Kalshi)
+	DollarOpenInt    int64 `json:"dollar_open_interest,omitempty" msgpack:"dollar_open_interest,omitempty"` // Dollars positioned (Kalshi)
+
+	// Trade info
+	TradeSide   string  `json:"trade_side,omitempty" msgpack:"trade_side,omitempty"`     // BUY/SELL or YES/NO
+	FeeRateBps  float64 `json:"fee_rate_bps,omitempty" msgpack:"fee_rate_bps,omitempty"` // Fee rate in basis points (Polymarket)
+
+	// Market metadata
+	MarketID   string `json:"market_id,omitempty" msgpack:"market_id,omitempty"`     // Market UUID (Kalshi) or Condition ID (Polymarket)
+	MarketName string `json:"market_name,omitempty" msgpack:"market_name,omitempty"` // Human-readable name
+	EventType  string `json:"event_type,omitempty" msgpack:"event_type,omitempty"`   // Message type that generated this tick
 }
 
 // Validate checks if tick data is valid

@@ -22,6 +22,34 @@ export interface Tick {
   price: number;
   timestamp: string;
   latency_ms?: number;
+
+  // Price fields
+  yes_bid?: number | null;
+  yes_ask?: number | null;
+  no_bid?: number | null;
+  no_ask?: number | null;
+  last_price?: number | null;
+  spread?: number | null;
+
+  // Size/Depth fields
+  bid_size?: number | null;
+  ask_size?: number | null;
+  trade_size?: number | null;
+
+  // Volume fields
+  volume?: number | null;
+  open_interest?: number | null;
+  dollar_volume?: number | null;
+  dollar_open_interest?: number | null;
+
+  // Trade info
+  trade_side?: string | null;
+  fee_rate_bps?: number | null;
+
+  // Market metadata
+  market_id?: string | null;
+  market_name?: string | null;
+  event_type?: string | null;
 }
 
 export interface Alert {

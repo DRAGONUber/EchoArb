@@ -47,6 +47,33 @@ class Tick(BaseModel):
         description="Frontend emit timestamp in milliseconds"
     )
 
+    # Price fields
+    yes_bid: float | None = Field(default=None, description="Best bid for YES (0-1)")
+    yes_ask: float | None = Field(default=None, description="Best ask for YES (0-1)")
+    no_bid: float | None = Field(default=None, description="Best bid for NO (0-1)")
+    no_ask: float | None = Field(default=None, description="Best ask for NO (0-1)")
+    last_price: float | None = Field(default=None, description="Last trade price (0-1)")
+
+    # Size/Depth fields
+    bid_size: float | None = Field(default=None, description="Size at best bid")
+    ask_size: float | None = Field(default=None, description="Size at best ask")
+    trade_size: float | None = Field(default=None, description="Size of last trade")
+
+    # Volume fields
+    volume: int | None = Field(default=None, description="Contracts traded")
+    open_interest: int | None = Field(default=None, description="Active contracts")
+    dollar_volume: int | None = Field(default=None, description="Dollars traded (Kalshi)")
+    dollar_open_interest: int | None = Field(default=None, description="Dollars positioned (Kalshi)")
+
+    # Trade info
+    trade_side: str | None = Field(default=None, description="BUY/SELL or YES/NO")
+    fee_rate_bps: float | None = Field(default=None, description="Fee rate in basis points (Polymarket)")
+
+    # Market metadata
+    market_id: str | None = Field(default=None, description="Market UUID (Kalshi) or Condition ID (Polymarket)")
+    market_name: str | None = Field(default=None, description="Human-readable market name")
+    event_type: str | None = Field(default=None, description="Message type that generated this tick")
+
     @field_validator("source", mode="before")
     @classmethod
     def normalize_source(cls, v: str) -> str:
